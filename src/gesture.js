@@ -1,13 +1,14 @@
 // MediaPipe Hands at ~30fps, decoupled from render loop.
 // CRITICAL: hands.send() must be awaited to avoid queue overflow.
 
-import { getVideoElement, setStatusTracking, setStatusNoHand } from './camera-device.js'
+import { getVideoElement, setStatusGesturePaused, setStatusNoHand, setStatusReady, setStatusTracking } from './camera-device.js'
 import { galleryParams } from './gallery.js'
 
 let handsInstance = null
 let onGestureChange = null   // cb(isOpen: boolean)
 let lastGestureState = null
 let isSending = false
+let gesturePaused = false
 
 // Swipe detection
 const SWIPE_HISTORY_FRAMES = 8    // fewer frames → responds faster with less travel
@@ -40,6 +41,17 @@ export function setPipSize(w, h) {
 }
 export function onGesture(cb)      { onGestureChange = cb }
 export function onSwipeGesture(cb) { onSwipe = cb }
+export function setGesturePaused(val) {
+    gesturePaused = val
+    lastGestureState = null
+    palmXHistory = []
+    lastSwipeTime = 0
+    swipeLockUntil = 0
+
+    if (gesturePaused) setStatusGesturePaused()
+    else               setStatusReady()
+}
+export function isGesturePaused()  { return gesturePaused }
 
 // ── Init ─────────────────────────��────────────────────────────���──────────────
 export function initGesture() {
@@ -104,6 +116,11 @@ function classifyGesture(lm) {
 // ── Result handler ───────────────────────────────────────────────────────────
 function handleResults(results) {
     drawPip(results)
+
+    if (gesturePaused) {
+        setStatusGesturePaused()
+        return
+    }
 
     if (!results.multiHandLandmarks?.length) {
         setStatusNoHand()

@@ -1,16 +1,14 @@
 // ── Photo Gallery System ──────────────────────────────────────────────────────
 //
 // Visual layers:
-//   Photo WALL  — thumbnail ring in world space; shown briefly during EXPLODING state
-//   Featured    — full photo parented to camera; shown during GALLERY / FROZEN state
+//   Photo WALL  — thumbnail ring in world space; remains visible when entering the gallery
+//   Featured    — full photo parented to camera; reached by swiping from the wall
 //
 // Caller (main.js) drives the lifecycle:
-//   EXPLODING  → showWall()           ring of thumbnails visible, no featured
-//   GALLERY    → hideWall()           wall disappears
-//              → showFeatured(idx)    featured photo appears
-//   GALLERY    → swipeNext/Prev()     slide transition
-//   FROZEN     → (no changes needed)  featured stays
-//   CONTRACTING→ hideAll()            everything disappears
+//   EXPLODING  → showWall()             ring of thumbnails visible, no featured
+//   GALLERY    → focusFromWall(dir)     pull one thumbnail into featured mode
+//   GALLERY    → swipeNext/Prev()       slide transition between featured photos
+//   CONTRACTING→ hideAll()              everything disappears
 
 import * as THREE from 'three'
 import { scene, camera } from './scene.js'
@@ -32,13 +30,18 @@ let aspects  = []
 let currentIndex = 0
 
 let wallGroup    = null
+let wallMeshes   = []
 let wallVisible  = false
 let featuredMesh = null
 let slideMesh    = null
-let slideTargetX = 0
 let isSliding    = false
 let slideDir     = 0
 let featuredVisible = false
+let focusMesh = null
+let isFocusingFromWall = false
+const focusTargetPos = new THREE.Vector3()
+const focusTargetQuat = new THREE.Quaternion()
+const focusTargetScale = new THREE.Vector3(1, 1, 1)
 
 const FEATURED_Z      = -140
 const FEATURED_BASE_H = 55
@@ -82,7 +85,7 @@ export function hideWall() {
     wallVisible = false
 }
 
-// ── Featured (shown during GALLERY/FROZEN state) ─────────────────────���────────
+// ── Featured (shown after focusing from the wall) ────────────────────────────
 export function showFeatured() {
     if (!textures.length) return
     _buildFeatured(currentIndex)
@@ -101,6 +104,7 @@ export function hideAll() {
 
 export function isWallVisible()     { return wallVisible }
 export function isFeaturedVisible() { return featuredVisible }
+export function isFocusing()        { return isFocusingFromWall }
 
 // ── Navigation ───────────────────────────────────────────────────────────────
 export function swipeNext() {
@@ -113,10 +117,31 @@ export function swipePrev() {
     _startSlide((currentIndex - 1 + textures.length) % textures.length, +1)
 }
 
+export function focusFromWall(direction = 'left') {
+    if (!wallVisible || featuredVisible || isFocusingFromWall || !textures.length) return
+
+    currentIndex = direction === 'right'
+        ? (currentIndex - 1 + textures.length) % textures.length
+        : (currentIndex + 1) % textures.length
+
+    const sourceMesh = wallMeshes[currentIndex]
+    if (!sourceMesh) return
+
+    const { width, height } = _featuredDimensions(currentIndex)
+    const thumbRatio = galleryParams.wallThumbSize / width
+
+    focusMesh = _makePlane(textures[currentIndex], width, height, galleryParams.wallOpacity)
+    sourceMesh.updateWorldMatrix(true, false)
+    sourceMesh.getWorldPosition(focusMesh.position)
+    sourceMesh.getWorldQuaternion(focusMesh.quaternion)
+    focusMesh.scale.setScalar(Math.max(thumbRatio, 0.01))
+    scene.add(focusMesh)
+    isFocusingFromWall = true
+}
+
 function _startSlide(nextIdx, dir) {
     isSliding = true; slideDir = dir
-    const w = _featuredWidth(nextIdx) * galleryParams.featuredScale
-    const h = FEATURED_BASE_H * galleryParams.featuredScale
+    const { width: w, height: h } = _featuredDimensions(nextIdx)
     slideMesh = _makePlane(textures[nextIdx], w, h)
     slideMesh.position.set(-dir * 280, 0, FEATURED_Z)
     camera.add(slideMesh)
@@ -129,6 +154,34 @@ function _featuredWidth(idx) {
 
 // ── Animation tick ────────────────────────────────────────────────────────────
 export function tickGallery() {
+    if (isFocusingFromWall && focusMesh) {
+        camera.localToWorld(focusTargetPos.set(0, 0, FEATURED_Z))
+        camera.getWorldQuaternion(focusTargetQuat)
+
+        focusMesh.position.lerp(focusTargetPos, 0.12)
+        focusMesh.quaternion.slerp(focusTargetQuat, 0.12)
+        focusMesh.scale.lerp(focusTargetScale, 0.12)
+        focusMesh.material.opacity = THREE.MathUtils.lerp(focusMesh.material.opacity, 1, 0.12)
+
+        if (wallGroup) {
+            for (const mesh of wallMeshes) {
+                if (mesh === wallMeshes[currentIndex]) continue
+                mesh.material.opacity = THREE.MathUtils.lerp(mesh.material.opacity, 0.08, 0.12)
+            }
+        }
+
+        if (focusMesh.position.distanceTo(focusTargetPos) < 0.8 && Math.abs(focusMesh.scale.x - 1) < 0.02) {
+            scene.remove(focusMesh)
+            focusMesh.geometry.dispose()
+            focusMesh.material.dispose()
+            focusMesh = null
+            isFocusingFromWall = false
+            _disposeWall()
+            _buildFeatured(currentIndex)
+            featuredVisible = true
+        }
+    }
+
     // Float animation for featured
     if (featuredMesh) {
         const t = performance.now() * 0.0008
@@ -160,6 +213,7 @@ export function tickGallery() {
 function _buildWall() {
     _disposeWall()
     wallGroup = new THREE.Group()
+    wallMeshes = []
     scene.add(wallGroup)
     const n = textures.length
     const r = galleryParams.wallRadius
@@ -172,17 +226,24 @@ function _buildWall() {
         const mesh = _makePlane(textures[i], tw, th, galleryParams.wallOpacity)
         mesh.position.set(x, y, z); mesh.lookAt(0, y, 0)
         wallGroup.add(mesh)
+        wallMeshes.push(mesh)
     }
 }
 
 function _buildFeatured(idx) {
     _disposeFeatured()
     scene.add(camera)   // ensure camera is in scene graph
-    const w = _featuredWidth(idx) * galleryParams.featuredScale
-    const h = FEATURED_BASE_H     * galleryParams.featuredScale
+    const { width: w, height: h } = _featuredDimensions(idx)
     featuredMesh = _makePlane(textures[idx], w, h)
     featuredMesh.position.set(0, 0, FEATURED_Z)
     camera.add(featuredMesh)
+}
+
+function _featuredDimensions(idx) {
+    return {
+        width: _featuredWidth(idx) * galleryParams.featuredScale,
+        height: FEATURED_BASE_H * galleryParams.featuredScale,
+    }
 }
 
 function _makePlane(tex, w, h, opacity = 1) {
@@ -199,12 +260,15 @@ function _disposeWall() {
     if (!wallGroup) return
     wallGroup.children.forEach(m => { m.geometry.dispose(); m.material.dispose() })
     scene.remove(wallGroup); wallGroup = null
+    wallMeshes = []
 }
 
 function _disposeFeatured() {
     if (featuredMesh) { camera.remove(featuredMesh); featuredMesh.geometry.dispose(); featuredMesh.material.dispose(); featuredMesh = null }
     if (slideMesh)    { camera.remove(slideMesh);    slideMesh.geometry.dispose();    slideMesh.material.dispose();    slideMesh = null }
+    if (focusMesh)    { scene.remove(focusMesh);     focusMesh.geometry.dispose();    focusMesh.material.dispose();    focusMesh = null }
     isSliding = false
+    isFocusingFromWall = false
 }
 
 // ── Rebuild on GUI change ─────────────────────────────────────────────────────

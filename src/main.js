@@ -5,14 +5,13 @@ import { scene, camera, renderer, controls, sharedTexture } from './scene.js'
 import { createStarField, getStarSystem } from './stars.js'
 import { buildParticles, getParticleMesh, tickMorph, setExploded } from './particles.js'
 import { initGui } from './gui.js'
-import { initGesture, onGesture, onSwipeGesture } from './gesture.js'
+import { initGesture, isGesturePaused, onGesture, onSwipeGesture, setGesturePaused } from './gesture.js'
 import { initCameras } from './camera-device.js'
 import { getRandomPhrase } from './phrases.js'
 import {
     loadImages, getImageCount,
-    showWall, hideWall,
-    showFeatured, hideFeatured, hideAll,
-    swipeNext, swipePrev,
+    showWall, hideAll,
+    focusFromWall, isFeaturedVisible, isWallVisible, swipeNext, swipePrev,
     tickGallery,
 } from './gallery.js'
 
@@ -23,28 +22,21 @@ const uploadInput     = document.getElementById('image-upload')
 const uploadCount     = document.getElementById('upload-count')
 
 // ── Gesture state machine ─────────────────────────────────────────────────────
-// States: IDLE | EXPLODING | GALLERY | FROZEN | CONTRACTING
+// States: IDLE | EXPLODING | GALLERY | CONTRACTING
 let appState = 'IDLE'
 
 function onGestureOpen() {
-    if (appState === 'FROZEN') {
-        // Re-open from freeze → back to GALLERY
-        appState = 'GALLERY'
-        return
-    }
     if (appState !== 'IDLE') return
     appState = 'EXPLODING'
     setExploded(true)
     AudioEngine.playExpandSound()
 
     if (getImageCount() > 0) {
-        // Show thumbnail wall briefly, then switch to featured photo
+        // Enter on the thumbnail wall; first swipe pulls a photo into focus.
         showWall()
         setTimeout(() => {
             if (appState !== 'EXPLODING') return
             appState = 'GALLERY'
-            hideWall()
-            showFeatured()
         }, 700)
     } else {
         appState = 'GALLERY'
@@ -53,7 +45,7 @@ function onGestureOpen() {
 }
 
 function onGestureClose() {
-    if (appState !== 'GALLERY' && appState !== 'EXPLODING' && appState !== 'FROZEN') return
+    if (appState !== 'GALLERY' && appState !== 'EXPLODING') return
     appState = 'CONTRACTING'
     setExploded(false)
     AudioEngine.playContractSound()
@@ -74,16 +66,6 @@ function showPhrase() {
 }
 function hidePhrase() {
     messageBox.classList.remove('visible')
-}
-
-// Freeze hint: tiny label on the message box
-function showFreezeHint(on) {
-    if (on) {
-        messageBox.innerText = '已冻结 · 张开手掌继续'
-        messageBox.classList.add('visible')
-    } else {
-        messageBox.classList.remove('visible')
-    }
 }
 
 // ── Image upload ──────────────────────────────────────────────────────────────
@@ -111,24 +93,23 @@ onGesture(isOpen => {
 
 onSwipeGesture(direction => {
     if (appState !== 'GALLERY') return
-    if (direction === 'left')  swipeNext()
-    else                       swipePrev()
+    if (isWallVisible() && !isFeaturedVisible()) {
+        focusFromWall(direction)
+        return
+    }
+    if (direction === 'left') swipeNext()
+    else                      swipePrev()
 })
 
 // ── Gesture engine ──
 initGesture()
 
-// ── Space bar: toggle freeze (照片悬停) ──
+// ── Space bar: toggle gesture input pause ──
 window.addEventListener('keydown', e => {
     if (e.code !== 'Space') return
+    if (e.repeat) return
     e.preventDefault()
-    if (appState === 'GALLERY') {
-        appState = 'FROZEN'
-        showFreezeHint(true)
-    } else if (appState === 'FROZEN') {
-        appState = 'GALLERY'
-        showFreezeHint(false)
-    }
+    setGesturePaused(!isGesturePaused())
 })
 
 // ── Fullscreen ──

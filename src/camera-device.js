@@ -20,8 +20,17 @@ export function getVideoElement() {
 
 function updateUI() {
     toggleBtn.textContent = isCapturePaused ? '恢复捕捉' : '暂停捕捉'
-    statusTxt.innerText   = isCapturePaused ? '捕捉已暂停' : '手势待命'
-    statusDot.style.backgroundColor = isCapturePaused ? '#ffcc00' : '#ff3333'
+    if (isCapturePaused) {
+        statusTxt.innerText = '捕捉已暂停'
+        statusDot.style.backgroundColor = '#ffcc00'
+    } else {
+        setStatusReady()
+    }
+}
+
+export function setStatusReady() {
+    statusDot.style.backgroundColor = '#ff3333'
+    statusTxt.innerText = '手势待命'
 }
 
 export function setStatusTracking() {
@@ -32,6 +41,11 @@ export function setStatusTracking() {
 export function setStatusNoHand() {
     statusDot.style.backgroundColor = '#ffcc00'
     statusTxt.innerText = '未检测到手部'
+}
+
+export function setStatusGesturePaused() {
+    statusDot.style.backgroundColor = '#66ccff'
+    statusTxt.innerText = '手势输入已暂停'
 }
 
 async function startCamera(deviceId) {

@@ -1,6 +1,6 @@
 {
   "name": "saturn-particles",
-  "version": "1.0.0",
+  "version": "2.3.0",
   "description": "Saturn ring particle system with gesture control",
   "type": "module",
   "scripts": {
