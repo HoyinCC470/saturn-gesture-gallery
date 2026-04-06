@@ -103,7 +103,5 @@ export function initGui(cameraSelectEl) {
     folderStorage.add(API, 'saveSettings').name('💾 保存当前配置')
     folderStorage.add(API, 'resetSettings').name('↺ 重置默认')
 
-    folderVisual.open()
-
     return gui
 }
