@@ -1,5 +1,5 @@
 import { PARAMS, scheduleSave } from './config.js'
-import { stopMediaStream } from './camera-stream.js'
+import { stopMediaStream, waitForVideoToBeReady } from './camera-stream.js'
 
 const videoEl   = document.getElementById('video-input')
 const selectEl  = document.getElementById('camera-select')
@@ -68,8 +68,15 @@ async function startCamera(deviceId) {
 
     try {
         currentStream = await navigator.mediaDevices.getUserMedia(constraints)
+        videoEl.muted = true
+        videoEl.autoplay = true
+        videoEl.playsInline = true
+        videoEl.setAttribute('muted', '')
+        videoEl.setAttribute('autoplay', '')
+        videoEl.setAttribute('playsinline', '')
         videoEl.srcObject = currentStream
         await videoEl.play()
+        await waitForVideoToBeReady(videoEl)
         isCapturePaused = false
         updateUI()
         scheduleSave(PARAMS, selectEl)
