@@ -1,4 +1,5 @@
 import { PARAMS, scheduleSave } from './config.js'
+import { stopMediaStream } from './camera-stream.js'
 
 const videoEl   = document.getElementById('video-input')
 const selectEl  = document.getElementById('camera-select')
@@ -92,7 +93,13 @@ export async function initCameras() {
         return
     }
 
-    try { await navigator.mediaDevices.getUserMedia({ video: true }) } catch {}
+    let probeStream = null
+    try {
+        probeStream = await navigator.mediaDevices.getUserMedia({ video: true })
+    } catch {}
+    finally {
+        stopMediaStream(probeStream)
+    }
 
     const devices = await navigator.mediaDevices.enumerateDevices()
     const videoDevices = devices.filter(d => d.kind === 'videoinput')
