@@ -56,7 +56,7 @@ export function initGesture() {
 
     // modelComplexity 0 = lightweight model, loads ~3× faster than 1
     handsInstance = new window.Hands({
-        locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+        locateFile: file => `/mediapipe/hands/${file}`,
     })
     handsInstance.setOptions({
         maxNumHands: 1,

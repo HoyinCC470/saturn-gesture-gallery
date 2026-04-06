@@ -40,11 +40,8 @@
     <label for="image-upload" id="upload-btn">上传图片</label>
     <div id="upload-count"></div>
 
-    <!-- MediaPipe Hands (CDN, must load before main.js) -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <!-- MediaPipe Hands — served locally, no CDN latency -->
+    <script src="/mediapipe/hands/hands.js"></script>
 
     <script type="module" src="/src/main.js"></script>
 </body>
