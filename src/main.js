@@ -5,7 +5,7 @@ import { scene, camera, renderer, controls, sharedTexture } from './scene.js'
 import { createStarField, getStarSystem } from './stars.js'
 import { buildParticles, getParticleMesh, tickMorph, setExploded } from './particles.js'
 import { initGui } from './gui.js'
-import { initGesture, onGesture, onFreeze, onSwipeGesture } from './gesture.js'
+import { initGesture, onGesture, onSwipeGesture } from './gesture.js'
 import { initCameras } from './camera-device.js'
 import { getRandomPhrase } from './phrases.js'
 import {
@@ -67,16 +67,6 @@ function onGestureClose() {
     setTimeout(() => { if (appState === 'CONTRACTING') appState = 'IDLE' }, 800)
 }
 
-function onFreezeToggle(isFrozen) {
-    if (isFrozen && appState === 'GALLERY') {
-        // Enter frozen: photo stays, hand can be lowered
-        appState = 'FROZEN'
-        showFreezeHint(true)
-    } else if (!isFrozen && appState === 'FROZEN') {
-        // Fist released while frozen — stay frozen until open palm
-        // (do nothing — FROZEN is exited by open palm or pinch)
-    }
-}
 
 function showPhrase() {
     messageBox.innerText = getRandomPhrase()
@@ -119,8 +109,6 @@ onGesture(isOpen => {
     else        onGestureClose()
 })
 
-onFreeze(isFrozen => onFreezeToggle(isFrozen))
-
 onSwipeGesture(direction => {
     if (appState !== 'GALLERY') return
     if (direction === 'left')  swipeNext()
@@ -131,8 +119,20 @@ onSwipeGesture(direction => {
 initGesture()
 
 // ── Space bar ──
+// GALLERY / FROZEN: toggle freeze (照片悬停)
+// IDLE: toggle auto-rotate (原有行为)
 window.addEventListener('keydown', e => {
-    if (e.code === 'Space') { e.preventDefault(); PARAMS.autoRotate = !PARAMS.autoRotate }
+    if (e.code !== 'Space') return
+    e.preventDefault()
+    if (appState === 'GALLERY') {
+        appState = 'FROZEN'
+        showFreezeHint(true)
+    } else if (appState === 'FROZEN') {
+        appState = 'GALLERY'
+        showFreezeHint(false)
+    } else {
+        PARAMS.autoRotate = !PARAMS.autoRotate
+    }
 })
 
 // ── Fullscreen ──

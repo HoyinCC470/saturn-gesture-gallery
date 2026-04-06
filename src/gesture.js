@@ -6,7 +6,6 @@ import { galleryParams } from './gallery.js'
 
 let handsInstance = null
 let onGestureChange = null   // cb(isOpen: boolean)
-let onFreezeChange  = null   // cb(isFrozen: boolean)
 let lastGestureState = null
 let isSending = false
 
@@ -40,7 +39,6 @@ export function setPipSize(w, h) {
     }
 }
 export function onGesture(cb)      { onGestureChange = cb }
-export function onFreeze(cb)       { onFreezeChange  = cb }
 export function onSwipeGesture(cb) { onSwipe = cb }
 
 // ── Init ─────────────────────────��────────────────────────────���──────────────
@@ -95,25 +93,15 @@ function startLoop() {
     requestAnimationFrame(loop)
 }
 
-// ── Gesture classifiers ─────────────────────────────────────────────────��─────
+// ── Gesture classifiers ──────────────────────────────────────────────────────
 function classifyGesture(lm) {
     const dist48 = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y)
-
-    // Fist: thumb+index somewhat close AND middle/ring/pinky fingertips near palm center
-    const cx = lm[9].x, cy = lm[9].y
-    const avgOtherTipDist = [12, 16, 20]
-        .reduce((s, i) => s + Math.hypot(lm[i].x - cx, lm[i].y - cy), 0) / 3
-    const isFist = dist48 < 0.10 && avgOtherTipDist < 0.13
-
-    if (isFist)             return 'fist'
-    if (dist48 < 0.06)      return 'pinch'
-    if (dist48 > 0.11)      return 'open'
+    if (dist48 < 0.06)  return 'pinch'
+    if (dist48 > 0.11)  return 'open'
     return 'neutral'
 }
 
-// ── Result handler ───────────────────────────────��───────────────────────────��
-let lastFrozen = false
-
+// ── Result handler ───────────────────────────────────────────────────────────
 function handleResults(results) {
     drawPip(results)
 
@@ -132,19 +120,12 @@ function handleResults(results) {
     // Block pinch briefly after a swipe so hand-return doesn't exit gallery
     const pinchAllowed = now > swipeLockUntil
     let newState = lastGestureState
-    if (gesture === 'open')                    newState = true
+    if (gesture === 'open')                       newState = true
     else if (gesture === 'pinch' && pinchAllowed) newState = false
 
     if (newState !== lastGestureState) {
         lastGestureState = newState
         onGestureChange?.(newState)
-    }
-
-    // ── Fist / freeze ──
-    const frozen = gesture === 'fist'
-    if (frozen !== lastFrozen) {
-        lastFrozen = frozen
-        onFreezeChange?.(frozen)
     }
 
     // ── Swipe (palm centre = landmark 9) ──
