@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saturn Gesture System</title>
+    <link rel="stylesheet" href="/styles/main.css">
+</head>
+<body>
+    <video id="video-input" playsinline></video>
+    <div id="canvas-container"></div>
+    <div id="ui-layer"><div id="message-box">等待手势指令...</div></div>
+
+    <div id="bottom-bar">
+        <div id="status-indicator">
+            <div class="dot" id="status-dot"></div>
+            <span id="status-text">初始化...</span>
+        </div>
+        <select id="camera-select">
+            <option value="" disabled selected>查找摄像头...</option>
+        </select>
+        <button id="camera-toggle">暂停捕捉</button>
+    </div>
+
+    <div id="controls-hint">左键旋转 / 右键平移 / 滚轮缩放<br>空格键暂停自转</div>
+    <div id="save-toast">配置已保存！下次刷新将保持此状态</div>
+
+    <div id="audio-hint">
+        <h2 style="margin-top:0; font-weight:300;">开启星际之旅</h2>
+        <p style="opacity:0.8; margin-bottom:0;">点击启动 BGM 与交互</p>
+    </div>
+
+    <button id="fullscreen-btn">全屏沉浸</button>
+
+    <!-- MediaPipe Hands (CDN, must load before main.js) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
