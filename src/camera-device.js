@@ -55,6 +55,9 @@ async function startCamera(deviceId) {
         isCapturePaused = false
         updateUI()
         scheduleSave(PARAMS, selectEl)
+        // Show PiP now that we have a stream
+        const pip = document.getElementById('pip-canvas')
+        if (pip) pip.classList.add('pip-visible')
     } catch (err) {
         console.error('摄像头启动失败:', err)
         statusDot.style.backgroundColor = '#ff3333'

@@ -5,6 +5,7 @@ import { createStarField, getStarSystem } from './stars.js'
 import { camera, controls, sharedTexture } from './scene.js'
 import { AudioEngine } from './audio.js'
 import { galleryParams, rebuildGalleryIfVisible } from './gallery.js'
+import { setPipEnabled, setPipSize } from './gesture.js'
 
 export function initGui(cameraSelectEl) {
     const gui = new GUI({ title: '控制面板' })
@@ -46,10 +47,7 @@ export function initGui(cameraSelectEl) {
     folderMotion.add(PARAMS, 'autoRotate').name('自动旋转 (空格)').onChange(save)
     folderMotion.add(PARAMS, 'rotationSpeed', 0.00, 0.05).name('自转速度').onChange(save)
     folderMotion.add(PARAMS, 'rotationDir', { '逆时针': 1, '顺时针': -1 }).name('旋转方向').onChange(save)
-    folderMotion.add(PARAMS, 'axialTilt', 0, 90).name('轴倾角').onChange(v => {
-        // main.js animate loop reads PARAMS.axialTilt each frame — no extra work needed here
-        save()
-    })
+    folderMotion.add(PARAMS, 'axialTilt', 0, 90).name('轴倾角').onChange(save)
 
     // Camera
     const folderCam = gui.addFolder('镜头控制')
@@ -90,6 +88,14 @@ export function initGui(cameraSelectEl) {
     folderGallery.add(galleryParams, 'wallOpacity', 0.1, 1.0, 0.05).name('墙透明度').onChange(() => rebuildGalleryIfVisible())
     folderGallery.add(galleryParams, 'transitionSpeed', 0.03, 0.3, 0.01).name('切换速度')
     folderGallery.add(galleryParams, 'swipeSensitivity', 0.05, 0.4, 0.01).name('滑动灵敏度')
+
+    // PiP
+    const pipParams = { enabled: true, size: 240 }
+    const folderPip = gui.addFolder('摄像头预览')
+    folderPip.add(pipParams, 'enabled').name('显示预览').onChange(v => setPipEnabled(v))
+    folderPip.add(pipParams, 'size', 120, 480, 20).name('预览尺寸').onChange(v => {
+        setPipSize(v, Math.round(v * 0.75))
+    })
 
     // Storage
     const folderStorage = gui.addFolder('配置存储')

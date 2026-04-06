@@ -214,6 +214,27 @@ body {
     pointer-events: none;
 }
 
+/* ── Camera PiP ── */
+#pip-canvas {
+    position: absolute;
+    bottom: 80px;
+    right: 20px;
+    width: 240px;
+    height: 180px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    z-index: 20;
+    cursor: move;
+    transition: opacity 0.3s;
+    display: none;
+}
+
+#pip-canvas.pip-visible {
+    display: block;
+}
+
 #save-toast {
     position: absolute;
     top: 20px;
