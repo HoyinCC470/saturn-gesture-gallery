@@ -1,30 +1,33 @@
-// MediaPipe Hands runs on its own 30fps loop, decoupled from the 60fps render loop.
-// This prevents hand-detection work from stealing render frame budget.
+// MediaPipe Hands runs on its own loop at ~30fps, decoupled from the 60fps render loop.
+// CRITICAL: hands.send() must be awaited — firing without await floods the internal
+// queue and causes onResults to stop firing entirely.
 
 import { getVideoElement, setStatusTracking, setStatusNoHand } from './camera-device.js'
+import { galleryParams } from './gallery.js'
 
 let handsInstance = null
-let onGestureChange = null   // callback(isExploded: boolean)
+let onGestureChange = null
 let lastGestureState = null
+let isSending = false   // guard: only one frame in flight at a time
 
-// Swipe detection state
+// Swipe detection
 const SWIPE_HISTORY_FRAMES = 12
-const SWIPE_THRESHOLD = 0.14
 const SWIPE_COOLDOWN_MS = 500
 let palmXHistory = []
 let lastSwipeTime = 0
-let onSwipe = null  // callback(direction: 'left' | 'right')
+let onSwipe = null
 
-export function onGesture(cb) {
-    onGestureChange = cb
-}
-
-export function onSwipeGesture(cb) {
-    onSwipe = cb
-}
+export function onGesture(cb)      { onGestureChange = cb }
+export function onSwipeGesture(cb) { onSwipe = cb }
 
 export function initGesture() {
-    // MediaPipe is loaded via CDN script tags in index.html
+    if (!window.Hands) {
+        console.error('[gesture] window.Hands not found — MediaPipe CDN scripts not loaded yet')
+        // Retry after a short delay to let CDN scripts initialise
+        setTimeout(initGesture, 500)
+        return
+    }
+
     handsInstance = new window.Hands({
         locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
     })
@@ -38,22 +41,29 @@ export function initGesture() {
 
     handsInstance.onResults(handleResults)
 
-    // Run detection at ~30fps independently of the render loop
-    const video = getVideoElement()
-    const FPS = 30
-    const INTERVAL = 1000 / FPS
+    startLoop()
+}
 
-    let lastSend = 0
-    function tick(now) {
-        if (now - lastSend >= INTERVAL) {
-            if (video.readyState >= 2) {
-                handsInstance.send({ image: video }).catch(() => {})
+function startLoop() {
+    const video = getVideoElement()
+
+    async function loop() {
+        // Only send a new frame when the previous one has completed
+        if (!isSending && video.readyState >= 2) {
+            isSending = true
+            try {
+                await handsInstance.send({ image: video })
+            } catch (err) {
+                console.warn('[gesture] hands.send error:', err)
             }
-            lastSend = now
+            isSending = false
         }
-        requestAnimationFrame(tick)
+
+        // Schedule next tick — ~30fps via setTimeout so we don't hammer at 60fps
+        setTimeout(() => requestAnimationFrame(loop), 16)
     }
-    requestAnimationFrame(tick)
+
+    requestAnimationFrame(loop)
 }
 
 function handleResults(results) {
@@ -66,7 +76,7 @@ function handleResults(results) {
     setStatusTracking()
     const lm = results.multiHandLandmarks[0]
 
-    // ── Pinch/spread detection (thumb tip vs index tip) ──
+    // ── Pinch / spread (thumb tip [4] vs index tip [8]) ──
     const dist = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y)
     let newState = lastGestureState
 
@@ -78,7 +88,7 @@ function handleResults(results) {
         onGestureChange?.(newState)
     }
 
-    // ── Swipe detection (palm center = landmark 9) ──
+    // ── Swipe (palm centre = landmark 9) ──
     const palmX = lm[9].x
     palmXHistory.push(palmX)
     if (palmXHistory.length > SWIPE_HISTORY_FRAMES) palmXHistory.shift()
@@ -86,10 +96,12 @@ function handleResults(results) {
     const now = performance.now()
     if (palmXHistory.length === SWIPE_HISTORY_FRAMES && now - lastSwipeTime > SWIPE_COOLDOWN_MS) {
         const delta = palmXHistory[palmXHistory.length - 1] - palmXHistory[0]
-        if (Math.abs(delta) > SWIPE_THRESHOLD) {
+        // Use live sensitivity from GUI params
+        const threshold = galleryParams?.swipeSensitivity ?? 0.14
+        if (Math.abs(delta) > threshold) {
             lastSwipeTime = now
             palmXHistory = []
-            // MediaPipe x increases left→right; positive delta = rightward hand movement = "next"
+            // MediaPipe x increases left→right; positive delta = hand moved right
             onSwipe?.(delta > 0 ? 'right' : 'left')
         }
     }
