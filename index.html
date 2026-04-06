@@ -22,7 +22,10 @@
         <button id="camera-toggle">暂停捕捉</button>
     </div>
 
-    <div id="controls-hint">左键旋转 / 右键平移 / 滚轮缩放<br>空格键暂停自转</div>
+    <!-- Camera PiP overlay -->
+    <canvas id="pip-canvas"></canvas>
+
+    <div id="controls-hint">左键旋转 / 右键平移 / 滚轮缩放<br>空格键暂停 / 恢复手势</div>
     <div id="save-toast">配置已保存！下次刷新将保持此状态</div>
 
     <div id="audio-hint">
@@ -32,11 +35,13 @@
 
     <button id="fullscreen-btn">全屏沉浸</button>
 
-    <!-- MediaPipe Hands (CDN, must load before main.js) -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <!-- Image upload (hidden input + visible label) -->
+    <input type="file" id="image-upload" accept="image/*" multiple style="display:none">
+    <label for="image-upload" id="upload-btn">上传图片</label>
+    <div id="upload-count"></div>
+
+    <!-- MediaPipe Hands — served locally, no CDN latency -->
+    <script src="/mediapipe/hands/hands.js"></script>
 
     <script type="module" src="/src/main.js"></script>
 </body>

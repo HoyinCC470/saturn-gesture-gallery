@@ -20,8 +20,17 @@ export function getVideoElement() {
 
 function updateUI() {
     toggleBtn.textContent = isCapturePaused ? '恢复捕捉' : '暂停捕捉'
-    statusTxt.innerText   = isCapturePaused ? '捕捉已暂停' : '手势待命'
-    statusDot.style.backgroundColor = isCapturePaused ? '#ffcc00' : '#ff3333'
+    if (isCapturePaused) {
+        statusTxt.innerText = '捕捉已暂停'
+        statusDot.style.backgroundColor = '#ffcc00'
+    } else {
+        setStatusReady()
+    }
+}
+
+export function setStatusReady() {
+    statusDot.style.backgroundColor = '#ff3333'
+    statusTxt.innerText = '手势待命'
 }
 
 export function setStatusTracking() {
@@ -34,17 +43,25 @@ export function setStatusNoHand() {
     statusTxt.innerText = '未检测到手部'
 }
 
+export function setStatusGesturePaused() {
+    statusDot.style.backgroundColor = '#66ccff'
+    statusTxt.innerText = '手势输入已暂停'
+}
+
 async function startCamera(deviceId) {
     if (currentStream) {
         currentStream.getTracks().forEach(t => t.stop())
         currentStream = null
     }
 
+    // 320×240 processes ~4× faster than 640×480 — MediaPipe accuracy is unchanged
+    // since it internally resizes to its own input tensor size
     const constraints = {
         video: {
             deviceId: deviceId ? { exact: deviceId } : undefined,
-            width: 640,
-            height: 480,
+            width:  { ideal: 320 },
+            height: { ideal: 240 },
+            frameRate: { ideal: 30 },
         },
     }
 
@@ -55,6 +72,9 @@ async function startCamera(deviceId) {
         isCapturePaused = false
         updateUI()
         scheduleSave(PARAMS, selectEl)
+        // Show PiP now that we have a stream
+        const pip = document.getElementById('pip-canvas')
+        if (pip) pip.classList.add('pip-visible')
     } catch (err) {
         console.error('摄像头启动失败:', err)
         statusDot.style.backgroundColor = '#ff3333'

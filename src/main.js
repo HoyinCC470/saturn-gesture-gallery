@@ -5,13 +5,60 @@ import { scene, camera, renderer, controls, sharedTexture } from './scene.js'
 import { createStarField, getStarSystem } from './stars.js'
 import { buildParticles, getParticleMesh, tickMorph, setExploded } from './particles.js'
 import { initGui } from './gui.js'
-import { initGesture, onGesture, onSwipeGesture } from './gesture.js'
+import { initGesture, isGesturePaused, onGesture, onSwipeGesture, setGesturePaused } from './gesture.js'
 import { initCameras } from './camera-device.js'
 import { getRandomPhrase } from './phrases.js'
+import {
+    loadImages, getImageCount,
+    showWall, hideAll,
+    focusFromWall, isFeaturedVisible, isWallVisible, swipeNext, swipePrev,
+    tickGallery,
+} from './gallery.js'
 
 // ── UI refs ──
-const messageBox    = document.getElementById('message-box')
-const cameraSelectEl = document.getElementById('camera-select')
+const messageBox      = document.getElementById('message-box')
+const cameraSelectEl  = document.getElementById('camera-select')
+const uploadInput     = document.getElementById('image-upload')
+const uploadCount     = document.getElementById('upload-count')
+
+// ── Gesture state machine ─────────────────────────────────────────────────────
+// States: IDLE | EXPLODING | GALLERY | CONTRACTING
+let appState = 'IDLE'
+
+function onGestureOpen() {
+    if (appState !== 'IDLE') return
+    appState = 'EXPLODING'
+    setExploded(true)
+    AudioEngine.playExpandSound()
+
+    if (getImageCount() > 0) {
+        // Enter on the thumbnail wall; first swipe pulls a photo into focus.
+        showWall()
+        setTimeout(() => {
+            if (appState !== 'EXPLODING') return
+            appState = 'GALLERY'
+        }, 700)
+    } else {
+        appState = 'GALLERY'
+        showPhrase()
+    }
+}
+
+function onGestureClose() {
+    if (appState !== 'GALLERY' && appState !== 'EXPLODING') return
+    appState = 'CONTRACTING'
+    setExploded(false)
+    AudioEngine.playContractSound()
+
+    if (getImageCount() > 0) {
+        hideAll()
+    } else {
+        hidePhrase()
+    }
+
+    setTimeout(() => { if (appState === 'CONTRACTING') appState = 'IDLE' }, 800)
+}
+
 
 function showPhrase() {
     messageBox.innerText = getRandomPhrase()
@@ -21,42 +68,51 @@ function hidePhrase() {
     messageBox.classList.remove('visible')
 }
 
-// ── Init scene objects ──
+// ── Image upload ──────────────────────────────────────────────────────────────
+uploadInput.addEventListener('change', async e => {
+    const files = e.target.files
+    if (!files.length) return
+    const n = await loadImages(files)
+    uploadCount.textContent = n > 0 ? `已加载 ${n} 张图片` : '加载失败'
+    uploadInput.value = ''
+})
+
+// ── Init scene ──
 createStarField()
 buildParticles(sharedTexture)
+scene.add(camera)
 
 // ── GUI ──
 initGui(cameraSelectEl)
 
 // ── Gesture callbacks ──
-onGesture(isExploded => {
-    setExploded(isExploded)
-    if (isExploded) {
-        showPhrase()
-        AudioEngine.playExpandSound()
-    } else {
-        hidePhrase()
-        AudioEngine.playContractSound()
-    }
+onGesture(isOpen => {
+    if (isOpen) onGestureOpen()
+    else        onGestureClose()
 })
 
 onSwipeGesture(direction => {
-    // Reserved for Phase 2b gallery — no-op for now
-    console.log('Swipe:', direction)
+    if (appState !== 'GALLERY') return
+    if (isWallVisible() && !isFeaturedVisible()) {
+        focusFromWall(direction)
+        return
+    }
+    if (direction === 'left') swipeNext()
+    else                      swipePrev()
 })
 
 // ── Gesture engine ──
 initGesture()
 
-// ── Space bar: toggle auto-rotate ──
+// ── Space bar: toggle gesture input pause ──
 window.addEventListener('keydown', e => {
-    if (e.code === 'Space') {
-        e.preventDefault()
-        PARAMS.autoRotate = !PARAMS.autoRotate
-    }
+    if (e.code !== 'Space') return
+    if (e.repeat) return
+    e.preventDefault()
+    setGesturePaused(!isGesturePaused())
 })
 
-// ── Fullscreen button ──
+// ── Fullscreen ──
 const fullscreenBtn = document.getElementById('fullscreen-btn')
 fullscreenBtn.addEventListener('click', () => {
     if (!document.fullscreenElement) {
@@ -68,7 +124,7 @@ fullscreenBtn.addEventListener('click', () => {
     }
 })
 
-// ── First-interaction: start audio + cameras ──
+// ── First-interaction ──
 let interactionStarted = false
 function kickstart() {
     if (interactionStarted) return
@@ -76,35 +132,23 @@ function kickstart() {
     AudioEngine.start()
     initCameras()
 }
-
 document.getElementById('audio-hint').addEventListener('click', kickstart)
 fullscreenBtn.addEventListener('click', kickstart)
 
 // ── Animation loop ──
 function animate() {
     requestAnimationFrame(animate)
-
     controls.update()
-
     const mesh = getParticleMesh()
     if (mesh) {
-        if (PARAMS.autoRotate) {
-            mesh.rotation.y += PARAMS.rotationSpeed * PARAMS.rotationDir
-        }
-
-        // Smooth tilt back to resting angle when not exploded
-        const targetX = 0.3
-        mesh.rotation.x = THREE.MathUtils.lerp(mesh.rotation.x, targetX, 0.03)
+        if (PARAMS.autoRotate) mesh.rotation.y += PARAMS.rotationSpeed * PARAMS.rotationDir
+        mesh.rotation.x = THREE.MathUtils.lerp(mesh.rotation.x, 0.3, 0.03)
         mesh.rotation.z = PARAMS.axialTilt * (Math.PI / 180)
     }
-
-    // GPU morph: advance uMorphProgress uniform
     tickMorph()
-
-    // Slowly rotate starfield
+    tickGallery()
     const stars = getStarSystem()
     if (stars) stars.rotation.y += 0.0003
-
     renderer.render(scene, camera)
 }
 
