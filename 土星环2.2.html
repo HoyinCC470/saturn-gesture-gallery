@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saturn Gesture System - Auto Reset</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000000;
+            /* 红褐色星云背景 */
+            background-image: 
+                radial-gradient(circle at 80% 20%, rgba(180, 60, 20, 0.4) 0%, rgba(80, 30, 10, 0.2) 30%, rgba(0, 0, 0, 0) 70%),
+                radial-gradient(circle at center, #1a1a24 0%, #000000 100%);
+            background-size: cover; 
+            background-attachment: fixed;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            user-select: none;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+            cursor: grab;
+        }
+        
+        #canvas-container:active {
+            cursor: grabbing;
+        }
+
+        #video-input {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #message-box {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 2rem;
+            font-weight: 300;
+            text-align: center;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 1.5s ease, transform 1.5s ease;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            max-width: 80%;
+            letter-spacing: 2px;
+        }
+
+        #message-box.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* 底部状态栏容器 */
+        #bottom-bar {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            z-index: 20;
+            pointer-events: auto;
+        }
+
+        #status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 12px;
+            pointer-events: none;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #ff3333;
+            box-shadow: 0 0 5px #ff3333;
+            transition: background-color 0.3s;
+        }
+
+        #camera-select {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: rgba(255, 255, 255, 0.8);
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            outline: none;
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+            max-width: 200px;
+        }
+        
+        #camera-select option {
+            background-color: #222;
+            color: #fff;
+        }
+
+        #camera-toggle {
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: rgba(255, 255, 255, 0.9);
+            padding: 8px 14px;
+            border-radius: 16px;
+            font-size: 12px;
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+            transition: all 0.2s;
+        }
+        #camera-toggle:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        #fullscreen-btn {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            pointer-events: auto;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+            transition: all 0.3s;
+            z-index: 20;
+        }
+        
+        #fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        #audio-hint {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            padding: 30px 50px;
+            border-radius: 12px;
+            z-index: 100;
+            pointer-events: auto;
+            cursor: pointer;
+            text-align: center;
+            display: block;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            transition: opacity 0.5s;
+        }
+        
+        #controls-hint {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 12px;
+            text-align: right;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        #save-toast {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(50, 200, 50, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.5s;
+            z-index: 100;
+            pointer-events: none;
+        }
+    </style>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/lil-gui@0.17.0/dist/lil-gui.umd.min.js"></script>
+</head>
+<body>
+
+    <video id="video-input" playsinline></video>
+    <div id="canvas-container"></div>
+    <div id="ui-layer"><div id="message-box">等待手势指令...</div></div>
+    
+    <div id="bottom-bar">
+        <div id="status-indicator">
+            <div class="dot" id="status-dot"></div>
+            <span id="status-text">初始化...</span>
+        </div>
+        <select id="camera-select">
+            <option value="" disabled selected>查找摄像头...</option>
+        </select>
+        <button id="camera-toggle">暂停捕捉</button>
+    </div>
+
+    <div id="controls-hint">左键旋转 / 右键平移 / 滚轮缩放<br>空格键暂停自转</div>
+    <div id="save-toast">配置已保存！下次刷新将保持此状态</div>
+    
+    <div id="audio-hint">
+        <h2 style="margin-top:0; font-weight:300;">开启星际之旅</h2>
+        <p style="opacity:0.8; margin-bottom:0;">点击启动 BGM 与交互</p>
+    </div>
+
+    <button id="fullscreen-btn">全屏沉浸</button>
+
+<script>
+    // ==========================================
+    // 0. 音频引擎
+    // ==========================================
+    const AudioEngine = {
+        ctx: null, masterGain: null, bgmGain: null, sfxGain: null,
+        isStarted: false, isBgmEnabled: false, globalVolume: 0.15, scale: {
+            bass: [65.41, 87.31, 98.00, 110.00, 130.81],
+            mid: [196.00, 220.00, 246.94, 261.63, 293.66, 329.63, 392.00],
+            high: [523.25, 659.25, 783.99, 880.00, 987.77, 1046.50]
+        },
+        init: function() {
+            window.AudioContext = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioContext();
+            this.masterGain = this.ctx.createGain();
+            this.masterGain.gain.value = this.globalVolume;
+            const lofiFilter = this.ctx.createBiquadFilter();
+            lofiFilter.type = 'lowpass'; lofiFilter.frequency.value = 1200; lofiFilter.Q.value = 0.5;
+            const compressor = this.ctx.createDynamicsCompressor();
+            compressor.threshold.value = -24; compressor.ratio.value = 12;
+            this.masterGain.connect(lofiFilter); lofiFilter.connect(compressor); compressor.connect(this.ctx.destination);
+            this.bgmGain = this.ctx.createGain(); this.bgmGain.gain.value = 0.0; this.bgmGain.connect(this.masterGain);
+            this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = 0.8; this.sfxGain.connect(this.masterGain);
+            this.createDelayEffect(this.bgmGain);
+        },
+        createDelayEffect: function(inputNode) {
+            const delay = this.ctx.createDelay(); delay.delayTime.value = 0.4;
+            const feedback = this.ctx.createGain(); feedback.gain.value = 0.3;
+            const delayFilter = this.ctx.createBiquadFilter(); delayFilter.type = 'lowpass'; delayFilter.frequency.value = 800;
+            inputNode.connect(delay); delay.connect(feedback); feedback.connect(delayFilter); delayFilter.connect(delay); delayFilter.connect(this.masterGain);
+        },
+        start: function() {
+            if (this.isStarted) return;
+            if (!this.ctx) this.init();
+            this.ctx.resume().then(() => {
+                this.isStarted = true;
+                if (this.isBgmEnabled) this.schedulePiano();
+                document.getElementById('audio-hint').style.opacity = '0';
+                setTimeout(() => { document.getElementById('audio-hint').style.display = 'none'; }, 500);
+            });
+        },
+        setVolume: function(val) {
+            this.globalVolume = val;
+            if(this.masterGain) this.masterGain.gain.setTargetAtTime(val, this.ctx.currentTime, 0.1);
+        },
+        playPianoNote: function(freq, duration, velocity = 1) {
+            const t = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle'; osc.frequency.value = freq;
+            osc.detune.value = (Math.random() - 0.5) * 10;
+            gain.gain.setValueAtTime(0, t);
+            gain.gain.linearRampToValueAtTime(velocity * 0.5, t + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+            osc.connect(gain); gain.connect(this.bgmGain);
+            osc.start(t); osc.stop(t + duration);
+        },
+        schedulePiano: function() {
+            if(!this.isStarted || !this.isBgmEnabled) return;
+            const nextTime = 2000 + Math.random() * 3000;
+            const r = Math.random();
+            if (r < 0.3) this.playPianoNote(this.scale.bass[Math.floor(Math.random() * this.scale.bass.length)], 4.0, 0.6);
+            else {
+                this.playPianoNote(this.scale.mid[Math.floor(Math.random() * this.scale.mid.length)], 3.0, 0.4);
+                if (Math.random() < 0.4) setTimeout(() => this.playPianoNote(this.scale.high[Math.floor(Math.random() * this.scale.high.length)], 3.0, 0.3), 100 + Math.random() * 200);
+            }
+            setTimeout(() => this.schedulePiano(), nextTime);
+        },
+        createPinkNoiseBuffer: function(duration) {
+            const bufferSize = this.ctx.sampleRate * duration;
+            const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+            for (let i = 0; i < bufferSize; i++) {
+                const white = Math.random() * 2 - 1;
+                b0 = 0.99886 * b0 + white * 0.0555179;
+                b1 = 0.99332 * b1 + white * 0.0750759;
+                b2 = 0.96900 * b2 + white * 0.1538520;
+                b3 = 0.86650 * b3 + white * 0.3104856;
+                b4 = 0.55000 * b4 + white * 0.5329522;
+                b5 = -0.7616 * b5 - white * 0.0168980;
+                data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11; b6 = white * 0.115926;
+            }
+            return buffer;
+        },
+        playExpandSound: function() {
+            if (!this.isStarted) return;
+            const t = this.ctx.currentTime;
+            const buffer = this.createPinkNoiseBuffer(2.5);
+            const noise = this.ctx.createBufferSource(); noise.buffer = buffer;
+            const filter = this.ctx.createBiquadFilter(); filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(150, t); filter.frequency.exponentialRampToValueAtTime(700, t + 1.2);
+            const gain = this.ctx.createGain(); gain.gain.setValueAtTime(0, t);
+            gain.gain.linearRampToValueAtTime(0.4, t + 0.1); gain.gain.exponentialRampToValueAtTime(0.01, t + 2.5);
+            noise.connect(filter); filter.connect(gain); gain.connect(this.sfxGain); noise.start(t);
+        },
+        playContractSound: function() {
+            if (!this.isStarted) return;
+            const t = this.ctx.currentTime;
+            const buffer = this.createPinkNoiseBuffer(1.5);
+            const noise = this.ctx.createBufferSource(); noise.buffer = buffer;
+            const filter = this.ctx.createBiquadFilter(); filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(200, t); filter.frequency.linearRampToValueAtTime(800, t + 0.2); filter.frequency.linearRampToValueAtTime(100, t + 1.0);
+            const gain = this.ctx.createGain(); gain.gain.setValueAtTime(0, t);
+            gain.gain.linearRampToValueAtTime(0.5, t + 0.2); gain.gain.linearRampToValueAtTime(0, t + 1.0);
+            noise.connect(filter); filter.connect(gain); gain.connect(this.sfxGain); noise.start(t);
+        }
+    };
+
+    function kickstartInteraction() {
+        AudioEngine.start();
+        if (!cameraInitRequested) {
+            cameraInitRequested = true;
+            getCameras();
+        }
+    }
+    document.getElementById('audio-hint').addEventListener('click', kickstartInteraction);
+    document.getElementById('fullscreen-btn').addEventListener('click', kickstartInteraction);
+
+    // ==========================================
+    // 1. 全局配置
+    // ==========================================
+    const DEFAULT_PARAMS = {
+        particleCount: 16000,   
+        particleSize: 1.8,      
+        ringThickness: 1.2,     
+        innerRingWidth: 25.0,   
+        outerRingWidth: 40.0,   
+        ringGap: 5.0,           
+        glowStrength: 0.7,      
+        starCount: 6000,        
+        starOpacity: 0.5,       
+        rotationSpeed: 0.002,   
+        rotationDir: 1,
+        autoRotate: true,
+        axialTilt: 26.7,
+        masterVolume: 0.15,
+        camDistance: 220,
+        camHeight: 50,
+        camAutoOrbit: false,
+        selectedCamera: ""
+    };
+
+    let PARAMS = { ...DEFAULT_PARAMS };
+    const savedConfig = localStorage.getItem('saturn_config_v1');
+    if (savedConfig) {
+        try {
+            PARAMS = { ...DEFAULT_PARAMS, ...JSON.parse(savedConfig) };
+        } catch (e) { console.error("配置加载失败", e); }
+    }
+
+    function clampParams(p) {
+        p.particleCount = Math.min(Math.max(p.particleCount, 5000), 20000);
+        p.starCount = Math.min(Math.max(p.starCount, 1000), 10000);
+        p.glowStrength = Math.min(Math.max(p.glowStrength, 0.1), 1.2);
+        return p;
+    }
+    PARAMS = clampParams(PARAMS);
+
+    const CONFIG = {
+        sphereRadius: 42,
+        ringStartOffset: 10,
+        colors: {
+            sphere: new THREE.Color(0xd2b48c), 
+            ring: new THREE.Color(0xa8a9ad) 
+        }
+    };
+
+    let isExploded = false;
+    let particles, geometry, material;
+    let starSystem;
+    
+    const targetSaturn = [];
+    const targetExplode = [];
+
+    // ==========================================
+    // 2. Three.js 场景
+    // ==========================================
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x000000, 0.0015);
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+    camera.position.set(0, PARAMS.camHeight, PARAMS.camDistance);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true; 
+    controls.dampingFactor = 0.05;
+    controls.enablePan = true;
+    controls.minDistance = 50;
+    controls.maxDistance = 800;
+    controls.autoRotate = PARAMS.camAutoOrbit;
+    controls.autoRotateSpeed = 0.5;
+
+    function createTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 32; canvas.height = 32;
+        const context = canvas.getContext('2d');
+        const grad = context.createRadialGradient(16,16,0, 16,16,16);
+        grad.addColorStop(0, 'rgba(255,255,255,1)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        context.fillStyle = grad;
+        context.fillRect(0,0,32,32);
+        return new THREE.CanvasTexture(canvas);
+    }
+    const sharedTexture = createTexture();
+
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+            e.preventDefault();
+            PARAMS.autoRotate = !PARAMS.autoRotate;
+            gui.controllers.forEach(c => { if(c.property === 'autoRotate') c.updateDisplay(); });
+            for (const folder of gui.folders) {
+                 folder.controllers.forEach(c => { if(c.property === 'autoRotate') c.updateDisplay(); })
+            }
+        }
+    });
+
+    // ==========================================
+    // 3. 粒子生成
+    // ==========================================
+    function createStarField() {
+        if(starSystem) { scene.remove(starSystem); starSystem.geometry.dispose(); starSystem.material.dispose(); }
+        const starGeo = new THREE.BufferGeometry();
+        const starPos = [], starColors = [];
+        for(let i=0; i<PARAMS.starCount; i++) {
+            const r = 500 + Math.random() * 700;
+            const theta = Math.random() * Math.PI * 2, phi = Math.acos(2 * Math.random() - 1);
+            starPos.push(r * Math.sin(phi) * Math.cos(theta), r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi));
+            const b = 0.3 + Math.random() * 0.7;
+            starColors.push(b, b, b);
+        }
+        starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
+        starGeo.setAttribute('color', new THREE.Float32BufferAttribute(starColors, 3));
+        starSystem = new THREE.Points(starGeo, new THREE.PointsMaterial({
+            size: 1.5, vertexColors: true, map: sharedTexture, 
+            transparent: true, opacity: PARAMS.starOpacity, blending: THREE.AdditiveBlending, fog: false
+        }));
+        scene.add(starSystem);
+    }
+
+    function initParticles() {
+        if (particles) {
+            scene.remove(particles);
+            geometry.dispose(); material.dispose();
+            targetSaturn.length = 0; targetExplode.length = 0;
+        }
+
+        const positions = [], colors = [];
+        const count = PARAMS.particleCount;
+        
+        const rPlanet = CONFIG.sphereRadius;
+        const rInnerStart = rPlanet + CONFIG.ringStartOffset;
+        const rInnerEnd = rInnerStart + PARAMS.innerRingWidth;
+        const rOuterStart = rInnerEnd + PARAMS.ringGap; 
+        const rOuterEnd = rOuterStart + PARAMS.outerRingWidth;
+
+        for (let i = 0; i < count; i++) {
+            let x, y, z, r, g, b;
+            if (i < count * 0.3) {
+                const phi = Math.acos(-1 + (2 * i) / (count * 0.3)); 
+                const theta = Math.sqrt((count * 0.3) * Math.PI) * phi;
+                y = rPlanet * Math.cos(phi); 
+                x = rPlanet * Math.sin(phi) * Math.cos(theta);
+                z = rPlanet * Math.sin(phi) * Math.sin(theta);
+                const noise = (Math.random() - 0.5) * 0.2;
+                const base = CONFIG.colors.sphere;
+                r = base.r + noise; g = base.g + noise; b = base.b + noise;
+            } else {
+                const angle = Math.random() * Math.PI * 2;
+                let radius;
+                let isInnerRing = false;
+                if (Math.random() > 0.5) {
+                    isInnerRing = true; radius = rInnerStart + Math.pow(Math.random(), 0.8) * (rInnerEnd - rInnerStart);
+                } else {
+                    isInnerRing = false; radius = rOuterStart + Math.random() * (rOuterEnd - rOuterStart);
+                }
+                x = radius * Math.cos(angle); z = radius * Math.sin(angle);
+                const ySpread = (Math.random() - 0.5) + (Math.random() - 0.5);
+                y = ySpread * PARAMS.ringThickness;
+                const baseColor = CONFIG.colors.ring;
+                let brightness = 0.5 + Math.random() * 0.5;
+                if (isInnerRing) brightness *= Math.sin((radius - rInnerStart) / PARAMS.innerRingWidth * Math.PI);
+                else brightness *= Math.sin((radius - rOuterStart) / PARAMS.outerRingWidth * Math.PI) * 0.8;
+                r = baseColor.r * brightness; g = baseColor.g * brightness; b = baseColor.b * brightness;
+            }
+            targetSaturn.push(x, y, z);
+            positions.push(x, y, z);
+            colors.push(r, g, b);
+
+            const exR = 300 * Math.cbrt(Math.random());
+            const exTheta = Math.random() * Math.PI * 2;
+            const exPhi = Math.acos(2 * Math.random() - 1);
+            targetExplode.push(exR * Math.sin(exPhi) * Math.cos(exTheta), exR * Math.sin(exPhi) * Math.sin(exTheta), exR * Math.cos(exPhi));
+        }
+
+        geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+        material = new THREE.PointsMaterial({
+            size: PARAMS.particleSize, vertexColors: true, map: sharedTexture, 
+            transparent: true, opacity: PARAMS.glowStrength, 
+            blending: THREE.AdditiveBlending, depthWrite: false
+        });
+
+        particles = new THREE.Points(geometry, material);
+        particles.rotation.z = PARAMS.axialTilt * (Math.PI / 180); 
+        particles.rotation.x = 0.3; // 初始角度
+        scene.add(particles);
+    }
+
+    createStarField();
+    initParticles();
+
+    // ==========================================
+    // 4. GUI 面板
+    // ==========================================
+    const gui = new lil.GUI({ title: '控制面板' });
+    const API = {
+        saveSettings: () => {
+            PARAMS.camDistance = camera.position.length(); PARAMS.camHeight = camera.position.y;
+            const sel = document.getElementById('camera-select');
+            PARAMS.selectedCamera = sel.value;
+            localStorage.setItem('saturn_config_v1', JSON.stringify(PARAMS));
+            const toast = document.getElementById('save-toast');
+            toast.style.opacity = '1'; setTimeout(() => { toast.style.opacity = '0'; }, 1500);
+        },
+        resetSettings: () => {
+            if(confirm('确定要恢复默认设置并刷新页面吗？')) { localStorage.removeItem('saturn_config_v1'); location.reload(); }
+        }
+    };
+    let saveTimer = null;
+    function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(() => API.saveSettings(), 500); }
+    const folderVisual = gui.addFolder('外观');
+    folderVisual.add(PARAMS, 'particleSize', 0.1, 5.0).name('粒子大小').onChange(v => { if(material) material.size = v; scheduleSave(); });
+    folderVisual.add(PARAMS, 'glowStrength', 0.1, 1.0).name('辉光强度').onChange(v => { if(material) material.opacity = v; scheduleSave(); });
+    const folderRings = gui.addFolder('光环设置');
+    folderRings.add(PARAMS, 'innerRingWidth', 5.0, 50.0).name('内环宽度').onFinishChange(() => { initParticles(); scheduleSave(); });
+    folderRings.add(PARAMS, 'outerRingWidth', 5.0, 80.0).name('外环宽度').onFinishChange(() => { initParticles(); scheduleSave(); });
+    folderRings.add(PARAMS, 'ringGap', 0.0, 20.0).name('环缝间距').onFinishChange(() => { initParticles(); scheduleSave(); });
+    folderRings.add(PARAMS, 'ringThickness', 0.1, 10.0).name('光环厚度').onFinishChange(() => { initParticles(); scheduleSave(); });
+    const folderMotion = gui.addFolder('运动控制');
+    folderMotion.add(PARAMS, 'autoRotate').name('自动旋转 (空格)').onChange(() => { scheduleSave(); });
+    folderMotion.add(PARAMS, 'rotationSpeed', 0.00, 0.05).name('自转速度').onChange(() => { scheduleSave(); });
+    folderMotion.add(PARAMS, 'rotationDir', { '逆时针': 1, '顺时针': -1 }).name('旋转方向').onChange(() => { scheduleSave(); });
+    folderMotion.add(PARAMS, 'axialTilt', 0, 90).name('轴倾角').onChange(v => { if(particles) particles.rotation.z = v * (Math.PI / 180); scheduleSave(); });
+    const folderCam = gui.addFolder('镜头控制');
+    folderCam.add(PARAMS, 'camDistance', 50, 500).name('距离 (Zoom)').onChange(v => { const dir = new THREE.Vector3().copy(camera.position).normalize(); camera.position.copy(dir.multiplyScalar(v)); scheduleSave(); }).listen();
+    folderCam.add(PARAMS, 'camHeight', -200, 200).name('高度 (Elev)').onChange(v => { camera.position.y = v; camera.lookAt(0,0,0); scheduleSave(); }).listen();
+    folderCam.add(PARAMS, 'camAutoOrbit').name('自动环绕').onChange(v => { controls.autoRotate = v; scheduleSave(); });
+    const folderPerf = gui.addFolder('系统参数');
+    folderPerf.add(PARAMS, 'particleCount', 5000, 40000).step(1000).name('粒子总数').onFinishChange(() => { initParticles(); scheduleSave(); });
+    folderPerf.add(PARAMS, 'starCount', 1000, 15000).step(1000).name('背景繁星').onFinishChange(() => { createStarField(); scheduleSave(); });
+    folderPerf.add(PARAMS, 'starOpacity', 0.0, 3.0).name('星空亮度').onChange(v => { if(starSystem) starSystem.material.opacity = v; scheduleSave(); });
+    const folderAudio = gui.addFolder('音频设置');
+    folderAudio.add(PARAMS, 'masterVolume', 0.0, 1.0).name('主音量').onChange(v => { AudioEngine.setVolume(v); scheduleSave(); });
+    const folderStorage = gui.addFolder('配置存储');
+    folderStorage.add(API, 'saveSettings').name('💾 保存当前配置');
+    folderStorage.add(API, 'resetSettings').name('↺ 重置默认');
+    folderVisual.open();
+
+    // ==========================================
+    // 5. 手势识别
+    // ==========================================
+    const rawPhrases = [
+    "抬头看，群星也在注视你。",
+    "迷茫，是恒星诞生前的星云。",
+    "宇宙很大，容得下你所有的不安。",
+    "别急，光走到这里也需要时间。",
+    "你眼中的黑暗，是另一场黎明的画布。",
+    "在这里，渺小不是一种过错。",
+    "安静下来，听听引力的声音。",
+    "走错路也没关系，那是新的轨道。",
+    "你身上的每个原子，都来自一颗爆炸的恒星。",
+    "并没有迷失，你只是在探索边界。",
+    "星光不问赶路人，但它会照亮脚下的路。",
+    "深渊之上，必有星空。",
+    "你的心跳，是宇宙在这个角落的回响。",
+    "不用刻意发光，你本就耀眼。"
+    ];
+    let phrasePool = [...rawPhrases];
+    const messageBox = document.getElementById('message-box');
+    function showRandomPhrase() {
+        if (phrasePool.length === 0) phrasePool = [...rawPhrases];
+        const index = Math.floor(Math.random() * phrasePool.length);
+        messageBox.innerText = phrasePool[index];
+        messageBox.classList.add('visible');
+        phrasePool.splice(index, 1);
+    }
+    function hidePhrase() { messageBox.classList.remove('visible'); }
+
+    const videoElement = document.getElementById('video-input');
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const cameraSelect = document.getElementById('camera-select');
+    const cameraToggleBtn = document.getElementById('camera-toggle');
+
+    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+    hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
+    
+    hands.onResults(results => {
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            statusDot.style.backgroundColor = "#33ff33";
+            statusText.innerText = "手势追踪中...";
+            const lm = results.multiHandLandmarks[0];
+            const dist = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
+            
+            // 简单的捏合判断
+            if (dist < 0.06) {
+                if (isExploded) {
+                    isExploded = false;
+                    hidePhrase();
+                    AudioEngine.playContractSound();
+                }
+            } else if (dist > 0.11) { 
+                if (!isExploded) {
+                    isExploded = true;
+                    showRandomPhrase();
+                    AudioEngine.playExpandSound();
+                }
+            }
+        } else {
+            statusDot.style.backgroundColor = "#ffcc00"; statusText.innerText = "未检测到手部";
+        }
+    });
+
+    // --- 摄像头管理 ---
+    let currentStream = null;
+    let isProcessing = false;
+    let cameraInitRequested = false;
+    let isCapturePaused = false;
+
+    function updateCameraToggleUI() {
+        cameraToggleBtn.textContent = isCapturePaused ? '恢复捕捉' : '暂停捕捉';
+        statusText.innerText = isCapturePaused ? '捕捉已暂停' : '手势待命';
+        statusDot.style.backgroundColor = isCapturePaused ? '#ffcc00' : '#ff3333';
+    }
+
+    async function getCameras() {
+        if (!window.isSecureContext) {
+            statusText.innerText = "需 https/localhost 才能启用摄像头";
+            statusDot.style.backgroundColor = "#ff3333";
+            return;
+        }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            statusText.innerText = "浏览器不支持摄像头";
+            statusDot.style.backgroundColor = "#ff3333";
+            return;
+        }
+        try {
+            await navigator.mediaDevices.getUserMedia({ video: true });
+        } catch(e) { console.warn("需要摄像头权限"); }
+
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        
+        cameraSelect.innerHTML = "";
+        videoDevices.forEach(device => {
+            const option = document.createElement('option');
+            option.value = device.deviceId;
+            option.text = device.label || `摄像头 ${cameraSelect.length + 1}`;
+            cameraSelect.appendChild(option);
+        });
+
+        if (PARAMS.selectedCamera && Array.from(cameraSelect.options).some(o => o.value === PARAMS.selectedCamera)) {
+            cameraSelect.value = PARAMS.selectedCamera;
+        }
+        
+        startCamera(cameraSelect.value);
+    }
+
+    async function startCamera(deviceId) {
+        if (currentStream) {
+            currentStream.getTracks().forEach(track => track.stop());
+        }
+
+        const constraints = {
+            video: { 
+                deviceId: deviceId ? { exact: deviceId } : undefined,
+                width: 640, height: 480 
+            }
+        };
+
+        try {
+            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+            videoElement.srcObject = currentStream;
+            videoElement.play();
+            isCapturePaused = false;
+            updateCameraToggleUI();
+            scheduleSave();
+            
+            if (!isProcessing) {
+                isProcessing = true;
+                processVideo();
+            }
+        } catch (err) {
+            console.error("摄像头启动失败:", err);
+            statusDot.style.backgroundColor = "#ff3333";
+            statusText.innerText = err.name === 'NotAllowedError' ? "请在浏览器中允许摄像头" : "摄像头启动失败";
+        }
+    }
+
+    async function processVideo() {
+        if (!isProcessing) return;
+        if (!isCapturePaused && videoElement.readyState >= 2) {
+            await hands.send({image: videoElement});
+        }
+        requestAnimationFrame(processVideo);
+    }
+
+    cameraSelect.onchange = () => {
+        startCamera(cameraSelect.value);
+        scheduleSave();
+    };
+
+    cameraToggleBtn.addEventListener('click', () => {
+        if (!currentStream) return;
+        isCapturePaused = !isCapturePaused;
+        if (isCapturePaused) {
+            videoElement.pause();
+        } else {
+            videoElement.play();
+            if (!isProcessing) { isProcessing = true; processVideo(); }
+        }
+        updateCameraToggleUI();
+    });
+
+    updateCameraToggleUI();
+
+    // 摄像头在用户交互后初始化
+
+    // ==========================================
+    // 6. 动画循环 (修复了回正逻辑)
+    // ==========================================
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        controls.update(); 
+        
+        if (PARAMS.autoRotate) {
+            particles.rotation.y += PARAMS.rotationSpeed * PARAMS.rotationDir;
+        }
+        
+        // [修复] 自动回正逻辑
+        if(isExploded) {
+            particles.rotation.x += 0.001; // 炸开时缓慢翻滚
+        } else {
+            // 平滑回正到 0.3 弧度 (默认最佳视角)
+            particles.rotation.x = THREE.MathUtils.lerp(particles.rotation.x, 0.3, 0.05);
+        }
+        
+        const lerpSpeed = 0.08, pos = geometry.attributes.position.array;
+        for (let i = 0; i < PARAMS.particleCount; i++) {
+            const idx = i * 3;
+            const tx = isExploded ? targetExplode[idx] : targetSaturn[idx];
+            const ty = isExploded ? targetExplode[idx + 1] : targetSaturn[idx + 1];
+            const tz = isExploded ? targetExplode[idx + 2] : targetSaturn[idx + 2];
+            pos[idx] += (tx - pos[idx]) * lerpSpeed;
+            pos[idx+1] += (ty - pos[idx+1]) * lerpSpeed;
+            pos[idx+2] += (tz - pos[idx+2]) * lerpSpeed;
+        }
+        geometry.attributes.position.needsUpdate = true;
+        if (starSystem) starSystem.rotation.y += 0.0003;
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+    document.getElementById('fullscreen-btn').addEventListener('click', () => {
+        if (!document.fullscreenElement) { document.documentElement.requestFullscreen(); document.getElementById('fullscreen-btn').innerText = "退出全屏"; } 
+        else { if (document.exitFullscreen) { document.exitFullscreen(); document.getElementById('fullscreen-btn').innerText = "全屏沉浸"; } }
+    });
+</script>
+</body>
+</html>
