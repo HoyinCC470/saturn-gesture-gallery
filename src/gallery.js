@@ -12,6 +12,7 @@
 
 import * as THREE from 'three'
 import { scene, camera } from './scene.js'
+import { mergeGalleryAssets } from './gallery-store.js'
 
 // ── Tuneable params (GUI writes directly) ──
 export const galleryParams = {
@@ -48,10 +49,10 @@ const FEATURED_BASE_H = 55
 
 // ── Load images ──────────────────────────────────────────────────────────────
 export function loadImages(files) {
-    textures.forEach(t => t.dispose())
-    textures = []; aspects = []; currentIndex = 0
     const loader = new THREE.TextureLoader()
     let loaded = 0
+    const nextTextures = []
+    const nextAspects = []
 
     return new Promise(resolve => {
         if (!files.length) { resolve(0); return }
@@ -59,14 +60,36 @@ export function loadImages(files) {
             const url = URL.createObjectURL(file)
             loader.load(url, tex => {
                 tex.colorSpace = THREE.SRGBColorSpace
-                textures[i] = tex
-                aspects[i]  = tex.image.width / tex.image.height
+                nextTextures[i] = tex
+                nextAspects[i]  = tex.image.width / tex.image.height
+                URL.revokeObjectURL(url)
                 if (++loaded === files.length) {
-                    textures = textures.filter(Boolean)
-                    aspects  = aspects.filter(Boolean)
+                    const merged = mergeGalleryAssets(
+                        textures,
+                        aspects,
+                        nextTextures.filter(Boolean),
+                        nextAspects.filter(Boolean),
+                    )
+                    textures = merged.textures
+                    aspects  = merged.aspects
+                    if (wallVisible) _buildWall()
                     resolve(textures.length)
                 }
-            }, undefined, () => { if (++loaded === files.length) resolve(textures.length) })
+            }, undefined, () => {
+                URL.revokeObjectURL(url)
+                if (++loaded === files.length) {
+                    const merged = mergeGalleryAssets(
+                        textures,
+                        aspects,
+                        nextTextures.filter(Boolean),
+                        nextAspects.filter(Boolean),
+                    )
+                    textures = merged.textures
+                    aspects  = merged.aspects
+                    if (wallVisible) _buildWall()
+                    resolve(textures.length)
+                }
+            })
         })
     })
 }
