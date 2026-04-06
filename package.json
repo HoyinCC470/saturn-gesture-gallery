@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "npm run copy-mediapipe",
     "build": "vite build",
     "preview": "vite preview",
     "copy-mediapipe": "node -e \"const fs=require('fs');const src='node_modules/@mediapipe/hands';const dst='public/mediapipe/hands';fs.mkdirSync(dst,{recursive:true});fs.readdirSync(src).filter(f=>/\\.(js|wasm|data|binarypb|tflite)$/.test(f)).forEach(f=>fs.copyFileSync(src+'/'+f,dst+'/'+f));console.log('MediaPipe files copied to '+dst)\""
