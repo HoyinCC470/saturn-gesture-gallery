@@ -118,9 +118,7 @@ onSwipeGesture(direction => {
 // ── Gesture engine ──
 initGesture()
 
-// ── Space bar ──
-// GALLERY / FROZEN: toggle freeze (照片悬停)
-// IDLE: toggle auto-rotate (原有行为)
+// ── Space bar: toggle freeze (照片悬停) ──
 window.addEventListener('keydown', e => {
     if (e.code !== 'Space') return
     e.preventDefault()
@@ -130,8 +128,6 @@ window.addEventListener('keydown', e => {
     } else if (appState === 'FROZEN') {
         appState = 'GALLERY'
         showFreezeHint(false)
-    } else {
-        PARAMS.autoRotate = !PARAMS.autoRotate
     }
 })
 
