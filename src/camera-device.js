@@ -1,5 +1,6 @@
 import { PARAMS, scheduleSave } from './config.js'
 import { stopMediaStream, waitForVideoToBeReady } from './camera-stream.js'
+import { resolvePreferredCameraId } from './camera-selection.js'
 
 const videoEl   = document.getElementById('video-input')
 const selectEl  = document.getElementById('camera-select')
@@ -83,10 +84,15 @@ async function startCamera(deviceId) {
         // Show PiP now that we have a stream
         const pip = document.getElementById('pip-canvas')
         if (pip) pip.classList.add('pip-visible')
+        return true
     } catch (err) {
+        stopMediaStream(currentStream)
+        currentStream = null
+        videoEl.srcObject = null
         console.error('摄像头启动失败:', err)
         statusDot.style.backgroundColor = '#ff3333'
         statusTxt.innerText = err.name === 'NotAllowedError' ? '请在浏览器中允许摄像头' : '摄像头启动失败'
+        return false
     }
 }
 
@@ -110,6 +116,10 @@ export async function initCameras() {
 
     const devices = await navigator.mediaDevices.enumerateDevices()
     const videoDevices = devices.filter(d => d.kind === 'videoinput')
+    if (videoDevices.length === 0) {
+        statusTxt.innerText = '未找到可用摄像头'
+        return
+    }
 
     selectEl.innerHTML = ''
     videoDevices.forEach(device => {
@@ -119,11 +129,17 @@ export async function initCameras() {
         selectEl.appendChild(opt)
     })
 
-    if (PARAMS.selectedCamera && Array.from(selectEl.options).some(o => o.value === PARAMS.selectedCamera)) {
-        selectEl.value = PARAMS.selectedCamera
-    }
+    const preferredCameraId = resolvePreferredCameraId(PARAMS.selectedCamera, videoDevices)
+    selectEl.value = preferredCameraId
 
-    await startCamera(selectEl.value)
+    const started = await startCamera(preferredCameraId)
+    const fallbackCameraId = videoDevices[0]?.deviceId ?? ''
+    if (!started && preferredCameraId && preferredCameraId !== fallbackCameraId) {
+        selectEl.value = fallbackCameraId
+        PARAMS.selectedCamera = fallbackCameraId
+        await startCamera(fallbackCameraId)
+        scheduleSave(PARAMS, selectEl)
+    }
 }
 
 selectEl.onchange = () => {

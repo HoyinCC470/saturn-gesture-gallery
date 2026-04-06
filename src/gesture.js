@@ -3,6 +3,7 @@
 
 import { getVideoElement, setStatusGesturePaused, setStatusNoHand, setStatusReady, setStatusTracking } from './camera-device.js'
 import { galleryParams } from './gallery.js'
+import { isLikelyHandLandmarks } from './gesture-filter.js'
 
 let handsInstance = null
 let onGestureChange = null   // cb(isOpen: boolean)
@@ -115,21 +116,24 @@ function classifyGesture(lm) {
 
 // ── Result handler ───────────────────────────────────────────────────────────
 function handleResults(results) {
-    drawPip(results)
+    const lm = results.multiHandLandmarks?.[0] ?? null
+    const handednessScore = results.multiHandedness?.[0]?.score ?? 1
+    const hasValidHand = isLikelyHandLandmarks(lm, handednessScore)
+    drawPip(hasValidHand ? lm : null)
 
     if (gesturePaused) {
         setStatusGesturePaused()
         return
     }
 
-    if (!results.multiHandLandmarks?.length) {
+    if (!hasValidHand) {
         setStatusNoHand()
         palmXHistory = []
+        lastGestureState = null
         return
     }
 
     setStatusTracking()
-    const lm  = results.multiHandLandmarks[0]
     const now = performance.now()
     const gesture = classifyGesture(lm)
 
@@ -163,7 +167,7 @@ function handleResults(results) {
 }
 
 // ── PiP drawing ───────────────────────────���──────────────────────────���────────
-function drawPip(results) {
+function drawPip(landmarks) {
     if (!pipCtx || !pipEnabled) return
     const video = getVideoElement()
     pipCtx.clearRect(0, 0, pipWidth, pipHeight)
@@ -172,8 +176,7 @@ function drawPip(results) {
     pipCtx.drawImage(video, -pipWidth, 0, pipWidth, pipHeight)
     pipCtx.restore()
 
-    if (!results.multiHandLandmarks?.length) return
-    const lm = results.multiHandLandmarks[0]
+    if (!landmarks?.length) return
     const toX = x => (1 - x) * pipWidth
     const toY = y => y * pipHeight
     const CONNECTIONS = window.HAND_CONNECTIONS || [
@@ -184,12 +187,12 @@ function drawPip(results) {
     pipCtx.strokeStyle = 'rgba(0,255,80,0.85)'; pipCtx.lineWidth = 1.5
     pipCtx.beginPath()
     for (const [a, b] of CONNECTIONS) {
-        pipCtx.moveTo(toX(lm[a].x), toY(lm[a].y))
-        pipCtx.lineTo(toX(lm[b].x), toY(lm[b].y))
+        pipCtx.moveTo(toX(landmarks[a].x), toY(landmarks[a].y))
+        pipCtx.lineTo(toX(landmarks[b].x), toY(landmarks[b].y))
     }
     pipCtx.stroke()
     pipCtx.fillStyle = 'rgba(0,220,255,0.9)'
-    for (const pt of lm) {
+    for (const pt of landmarks) {
         pipCtx.beginPath(); pipCtx.arc(toX(pt.x), toY(pt.y), 2.5, 0, Math.PI*2); pipCtx.fill()
     }
 }
