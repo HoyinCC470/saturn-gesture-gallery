@@ -40,11 +40,14 @@ async function startCamera(deviceId) {
         currentStream = null
     }
 
+    // 320×240 processes ~4× faster than 640×480 — MediaPipe accuracy is unchanged
+    // since it internally resizes to its own input tensor size
     const constraints = {
         video: {
             deviceId: deviceId ? { exact: deviceId } : undefined,
-            width: 640,
-            height: 480,
+            width:  { ideal: 320 },
+            height: { ideal: 240 },
+            frameRate: { ideal: 30 },
         },
     }
 

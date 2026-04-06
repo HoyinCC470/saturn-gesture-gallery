@@ -1,140 +1,135 @@
-// ── Photo Gallery System ────────────────────────────────────────────────────
-// Photo wall: ring of thumbnail planes in world space (visible when exploded)
-// Featured photo: parented to camera so it stays centred regardless of orbit
+// ── Photo Gallery System ──────────────────────────────────────────────────────
 //
-// State machine (driven from main.js):
-//   IDLE → show() → GALLERY → hide() → IDLE
-//   In GALLERY: swipeNext() / swipePrev() animate the featured photo
+// Visual layers:
+//   Photo WALL  — thumbnail ring in world space; shown briefly during EXPLODING state
+//   Featured    — full photo parented to camera; shown during GALLERY / FROZEN state
+//
+// Caller (main.js) drives the lifecycle:
+//   EXPLODING  → showWall()           ring of thumbnails visible, no featured
+//   GALLERY    → hideWall()           wall disappears
+//              → showFeatured(idx)    featured photo appears
+//   GALLERY    → swipeNext/Prev()     slide transition
+//   FROZEN     → (no changes needed)  featured stays
+//   CONTRACTING→ hideAll()            everything disappears
 
 import * as THREE from 'three'
 import { scene, camera } from './scene.js'
 
-// ── Tuneable params (GUI can write these directly) ──
+// ── Tuneable params (GUI writes directly) ──
 export const galleryParams = {
-    featuredScale: 1.0,      // multiplier for featured photo size
-    wallRadius: 110,          // world-space radius of thumbnail ring
-    wallThumbSize: 24,        // thumbnail width (height auto from aspect)
-    wallOpacity: 0.65,
-    transitionSpeed: 0.12,   // lerp speed per frame for slide animation
-    swipeSensitivity: 0.14,  // matched to gesture.js threshold
+    featuredScale:    1.0,
+    wallRadius:       110,
+    wallThumbSize:    24,
+    wallOpacity:      0.65,
+    transitionSpeed:  0.12,
+    swipeSensitivity: 0.10,   // default reduced from 0.14 → less hand travel needed
+    swipeCooldownMs:  1200,   // GUI-editable; used by gesture.js as reference
 }
 
 // ── State ──
-let textures = []            // THREE.Texture[], one per uploaded image
-let aspects  = []            // aspect ratios per image
+let textures = []
+let aspects  = []
 let currentIndex = 0
 
-let wallGroup    = null      // thumbnail ring (world space)
-let featuredGroup = null     // container parented to camera
-
-// Per-featured slot: current + next/prev (for slide transitions)
+let wallGroup    = null
+let wallVisible  = false
 let featuredMesh = null
-let slideMesh    = null      // the incoming photo during a swipe transition
-let slideTargetX = 0         // target local-x for featuredMesh during transition
-let slideFromX   = 0         // starting local-x for slideMesh
+let slideMesh    = null
+let slideTargetX = 0
 let isSliding    = false
-let slideDir     = 0         // +1 = next (left), -1 = prev (right)
+let slideDir     = 0
+let featuredVisible = false
 
-let visible = false
+const FEATURED_Z      = -140
+const FEATURED_BASE_H = 55
 
-// ── Camera-space depth for featured photo ──
-const FEATURED_Z  = -140    // units in front of camera
-const FEATURED_BASE_H = 55  // base height in camera-local units
-
-// ── Load images ────────────────────────────────────────────────────────────
+// ── Load images ──────────────────────────────────────────────────────────────
 export function loadImages(files) {
-    // Dispose old textures
     textures.forEach(t => t.dispose())
-    textures = []
-    aspects  = []
-    currentIndex = 0
-
+    textures = []; aspects = []; currentIndex = 0
     const loader = new THREE.TextureLoader()
     let loaded = 0
 
     return new Promise(resolve => {
         if (!files.length) { resolve(0); return }
-
         Array.from(files).forEach((file, i) => {
             const url = URL.createObjectURL(file)
             loader.load(url, tex => {
                 tex.colorSpace = THREE.SRGBColorSpace
-                // Insert in original order
                 textures[i] = tex
                 aspects[i]  = tex.image.width / tex.image.height
-                loaded++
-                if (loaded === files.length) {
-                    // compact (remove holes if any failed)
+                if (++loaded === files.length) {
                     textures = textures.filter(Boolean)
                     aspects  = aspects.filter(Boolean)
                     resolve(textures.length)
                 }
-            }, undefined, () => {
-                loaded++
-                if (loaded === files.length) resolve(textures.length)
-            })
+            }, undefined, () => { if (++loaded === files.length) resolve(textures.length) })
         })
     })
 }
 
 export function getImageCount() { return textures.length }
 
-// ── Show / Hide ─────────────────────────────────────────────────────────────
-export function showGallery() {
+// ── Wall (shown during EXPLODING state) ──────────────────────────────────────
+export function showWall() {
     if (!textures.length) return
-    visible = true
-    buildWall()
-    buildFeatured(currentIndex)
+    _buildWall()
+    wallVisible = true
 }
 
-export function hideGallery() {
-    visible = false
-    disposeWall()
-    disposeFeatured()
+export function hideWall() {
+    _disposeWall()
+    wallVisible = false
 }
 
-export function isGalleryVisible() { return visible }
+// ── Featured (shown during GALLERY/FROZEN state) ─────────────────────���────────
+export function showFeatured() {
+    if (!textures.length) return
+    _buildFeatured(currentIndex)
+    featuredVisible = true
+}
 
-// ── Navigation ──────────────────────────────────────────────────────────────
+export function hideFeatured() {
+    _disposeFeatured()
+    featuredVisible = false
+}
+
+export function hideAll() {
+    hideWall()
+    hideFeatured()
+}
+
+export function isWallVisible()     { return wallVisible }
+export function isFeaturedVisible() { return featuredVisible }
+
+// ── Navigation ───────────────────────────────────────────────────────────────
 export function swipeNext() {
-    if (!visible || isSliding || textures.length < 2) return
-    const nextIdx = (currentIndex + 1) % textures.length
-    startSlide(nextIdx, -1)   // featured flies left, new comes from right
+    if (!featuredVisible || isSliding || textures.length < 2) return
+    _startSlide((currentIndex + 1) % textures.length, -1)
 }
 
 export function swipePrev() {
-    if (!visible || isSliding || textures.length < 2) return
-    const prevIdx = (currentIndex - 1 + textures.length) % textures.length
-    startSlide(prevIdx, +1)   // featured flies right, new comes from left
+    if (!featuredVisible || isSliding || textures.length < 2) return
+    _startSlide((currentIndex - 1 + textures.length) % textures.length, +1)
 }
 
-function startSlide(nextIdx, dir) {
-    isSliding  = true
-    slideDir   = dir
-
-    // outgoing mesh stays as featuredMesh, incoming is built as slideMesh
-    const slideW = featuredWidth(nextIdx) * galleryParams.featuredScale
-    const slideH = FEATURED_BASE_H * galleryParams.featuredScale
-
-    slideMesh = makePlane(textures[nextIdx], slideW, slideH)
-    slideMesh.position.set(-dir * 280, 0, FEATURED_Z)  // starts off-screen
+function _startSlide(nextIdx, dir) {
+    isSliding = true; slideDir = dir
+    const w = _featuredWidth(nextIdx) * galleryParams.featuredScale
+    const h = FEATURED_BASE_H * galleryParams.featuredScale
+    slideMesh = _makePlane(textures[nextIdx], w, h)
+    slideMesh.position.set(-dir * 280, 0, FEATURED_Z)
     camera.add(slideMesh)
-
-    slideTargetX = 0
-    slideFromX   = -dir * 280
-
     currentIndex = nextIdx
 }
 
-function featuredWidth(idx) {
+function _featuredWidth(idx) {
     return FEATURED_BASE_H * (aspects[idx] || 1.5)
 }
 
-// ── Animation tick (call from main.js render loop) ──────────────────────────
+// ── Animation tick ────────────────────────────────────────────────────────────
 export function tickGallery() {
-    if (!visible) return
-
-    // Gently float the featured photo
+    // Float animation for featured
     if (featuredMesh) {
         const t = performance.now() * 0.0008
         featuredMesh.position.y = Math.sin(t) * 1.8
@@ -142,24 +137,18 @@ export function tickGallery() {
     }
 
     // Slide transition
-    if (isSliding && slideMesh) {
+    if (isSliding && slideMesh && featuredMesh) {
         const speed = galleryParams.transitionSpeed
-        const targetOutX = slideDir * 280   // outgoing flies out
-
-        // Move outgoing featured out
+        const targetOutX = slideDir * 280
         featuredMesh.position.x = THREE.MathUtils.lerp(featuredMesh.position.x, targetOutX, speed)
-        // Move incoming slide in
         slideMesh.position.x    = THREE.MathUtils.lerp(slideMesh.position.x, 0, speed)
 
         if (Math.abs(slideMesh.position.x) < 1.0) {
-            // Snap and promote slide → featured
             slideMesh.position.x = 0
             camera.remove(featuredMesh)
-            featuredMesh.geometry.dispose()
-            featuredMesh.material.dispose()
+            featuredMesh.geometry.dispose(); featuredMesh.material.dispose()
             featuredMesh = slideMesh
-            slideMesh = null
-            isSliding = false
+            slideMesh = null; isSliding = false
         }
     }
 
@@ -167,83 +156,62 @@ export function tickGallery() {
     if (wallGroup) wallGroup.rotation.y += 0.001
 }
 
-// ── Build helpers ────────────────────────────────────────────────────────────
-function buildWall() {
-    disposeWall()
+// ── Build helpers ─────────────────────────────────────────────────────────────
+function _buildWall() {
+    _disposeWall()
     wallGroup = new THREE.Group()
     scene.add(wallGroup)
-
     const n = textures.length
     const r = galleryParams.wallRadius
     const tw = galleryParams.wallThumbSize
-
     for (let i = 0; i < n; i++) {
         const angle = (i / n) * Math.PI * 2
-        const x = Math.cos(angle) * r
-        const z = Math.sin(angle) * r
-        const y = (Math.sin(i * 2.4) * 0.5) * 40  // scatter heights gently
-
+        const x = Math.cos(angle) * r, z = Math.sin(angle) * r
+        const y = Math.sin(i * 2.4) * 20
         const th = tw / (aspects[i] || 1.5)
-        const mesh = makePlane(textures[i], tw, th, galleryParams.wallOpacity)
-        mesh.position.set(x, y, z)
-        mesh.lookAt(0, y, 0)
+        const mesh = _makePlane(textures[i], tw, th, galleryParams.wallOpacity)
+        mesh.position.set(x, y, z); mesh.lookAt(0, y, 0)
         wallGroup.add(mesh)
     }
 }
 
-function buildFeatured(idx) {
-    disposeFeatured()
-    // Parent to camera for stable screen-space centering
-    if (!camera.children.includes(featuredGroup)) scene.add(camera)
-
-    const w = featuredWidth(idx) * galleryParams.featuredScale
-    const h = FEATURED_BASE_H   * galleryParams.featuredScale
-
-    featuredMesh = makePlane(textures[idx], w, h)
+function _buildFeatured(idx) {
+    _disposeFeatured()
+    scene.add(camera)   // ensure camera is in scene graph
+    const w = _featuredWidth(idx) * galleryParams.featuredScale
+    const h = FEATURED_BASE_H     * galleryParams.featuredScale
+    featuredMesh = _makePlane(textures[idx], w, h)
     featuredMesh.position.set(0, 0, FEATURED_Z)
     camera.add(featuredMesh)
 }
 
-function makePlane(tex, w, h, opacity = 1) {
-    const geo = new THREE.PlaneGeometry(w, h)
-    const mat = new THREE.MeshBasicMaterial({
-        map: tex,
-        transparent: true,
-        opacity,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-    })
-    return new THREE.Mesh(geo, mat)
+function _makePlane(tex, w, h, opacity = 1) {
+    return new THREE.Mesh(
+        new THREE.PlaneGeometry(w, h),
+        new THREE.MeshBasicMaterial({
+            map: tex, transparent: true, opacity,
+            side: THREE.DoubleSide, depthWrite: false,
+        })
+    )
 }
 
-function disposeWall() {
+function _disposeWall() {
     if (!wallGroup) return
     wallGroup.children.forEach(m => { m.geometry.dispose(); m.material.dispose() })
-    scene.remove(wallGroup)
-    wallGroup = null
+    scene.remove(wallGroup); wallGroup = null
 }
 
-function disposeFeatured() {
-    if (featuredMesh) {
-        camera.remove(featuredMesh)
-        featuredMesh.geometry.dispose()
-        featuredMesh.material.dispose()
-        featuredMesh = null
-    }
-    if (slideMesh) {
-        camera.remove(slideMesh)
-        slideMesh.geometry.dispose()
-        slideMesh.material.dispose()
-        slideMesh = null
-    }
+function _disposeFeatured() {
+    if (featuredMesh) { camera.remove(featuredMesh); featuredMesh.geometry.dispose(); featuredMesh.material.dispose(); featuredMesh = null }
+    if (slideMesh)    { camera.remove(slideMesh);    slideMesh.geometry.dispose();    slideMesh.material.dispose();    slideMesh = null }
     isSliding = false
 }
 
-// ── Update gallery appearance when GUI params change ─────────────────────────
-export function rebuildGalleryIfVisible() {
-    if (!visible) return
-    disposeWall()
-    disposeFeatured()
-    buildWall()
-    buildFeatured(currentIndex)
+// ── Rebuild on GUI change ─────────────────────────────────────────────────────
+export function rebuildWallIfVisible() {
+    if (wallVisible) { _disposeWall(); _buildWall() }
+}
+
+export function rebuildFeaturedIfVisible() {
+    if (featuredVisible) { _disposeFeatured(); _buildFeatured(currentIndex) }
 }
