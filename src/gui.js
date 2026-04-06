@@ -4,6 +4,7 @@ import { buildParticles, setParticleSize, setGlowStrength } from './particles.js
 import { createStarField, getStarSystem } from './stars.js'
 import { camera, controls, sharedTexture } from './scene.js'
 import { AudioEngine } from './audio.js'
+import { galleryParams, rebuildGalleryIfVisible } from './gallery.js'
 
 export function initGui(cameraSelectEl) {
     const gui = new GUI({ title: '控制面板' })
@@ -80,6 +81,15 @@ export function initGui(cameraSelectEl) {
         AudioEngine.setVolume(v)
         save()
     })
+
+    // Gallery
+    const folderGallery = gui.addFolder('照片画廊')
+    folderGallery.add(galleryParams, 'featuredScale', 0.3, 2.0, 0.05).name('特写尺寸').onChange(() => rebuildGalleryIfVisible())
+    folderGallery.add(galleryParams, 'wallRadius', 60, 200, 5).name('照片墙半径').onChange(() => rebuildGalleryIfVisible())
+    folderGallery.add(galleryParams, 'wallThumbSize', 10, 60, 2).name('缩略图大小').onChange(() => rebuildGalleryIfVisible())
+    folderGallery.add(galleryParams, 'wallOpacity', 0.1, 1.0, 0.05).name('墙透明度').onChange(() => rebuildGalleryIfVisible())
+    folderGallery.add(galleryParams, 'transitionSpeed', 0.03, 0.3, 0.01).name('切换速度')
+    folderGallery.add(galleryParams, 'swipeSensitivity', 0.05, 0.4, 0.01).name('滑动灵敏度')
 
     // Storage
     const folderStorage = gui.addFolder('配置存储')

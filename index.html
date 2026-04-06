@@ -32,6 +32,11 @@
 
     <button id="fullscreen-btn">全屏沉浸</button>
 
+    <!-- Image upload (hidden input + visible label) -->
+    <input type="file" id="image-upload" accept="image/*" multiple style="display:none">
+    <label for="image-upload" id="upload-btn">上传图片</label>
+    <div id="upload-count"></div>
+
     <!-- MediaPipe Hands (CDN, must load before main.js) -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>

@@ -8,10 +8,61 @@ import { initGui } from './gui.js'
 import { initGesture, onGesture, onSwipeGesture } from './gesture.js'
 import { initCameras } from './camera-device.js'
 import { getRandomPhrase } from './phrases.js'
+import {
+    loadImages, getImageCount,
+    showGallery, hideGallery, isGalleryVisible,
+    swipeNext, swipePrev,
+    tickGallery,
+} from './gallery.js'
 
 // ── UI refs ──
-const messageBox    = document.getElementById('message-box')
+const messageBox     = document.getElementById('message-box')
 const cameraSelectEl = document.getElementById('camera-select')
+const uploadInput    = document.getElementById('image-upload')
+const uploadCount    = document.getElementById('upload-count')
+
+// ── Gesture state machine ────────────────────────────────────────────────────
+// States: IDLE | EXPLODING | GALLERY | CONTRACTING
+let appState = 'IDLE'
+
+function onGestureOpen() {
+    if (appState !== 'IDLE') return
+    appState = 'EXPLODING'
+    setExploded(true)
+    AudioEngine.playExpandSound()
+
+    if (getImageCount() > 0) {
+        // Wait for particle explode morph to mostly complete, then show gallery
+        setTimeout(() => {
+            if (appState === 'EXPLODING') {
+                appState = 'GALLERY'
+                showGallery()
+            }
+        }, 600)
+    } else {
+        // Fallback: show text phrase
+        appState = 'GALLERY'
+        showPhrase()
+    }
+}
+
+function onGestureClose() {
+    if (appState !== 'GALLERY' && appState !== 'EXPLODING') return
+    appState = 'CONTRACTING'
+    setExploded(false)
+    AudioEngine.playContractSound()
+
+    if (getImageCount() > 0) {
+        hideGallery()
+    } else {
+        hidePhrase()
+    }
+
+    // Return to IDLE after contraction
+    setTimeout(() => {
+        if (appState === 'CONTRACTING') appState = 'IDLE'
+    }, 800)
+}
 
 function showPhrase() {
     messageBox.innerText = getRandomPhrase()
@@ -21,28 +72,34 @@ function hidePhrase() {
     messageBox.classList.remove('visible')
 }
 
+// ── Image upload ─────────────────────────────────────────────────────────────
+uploadInput.addEventListener('change', async e => {
+    const files = e.target.files
+    if (!files.length) return
+    const n = await loadImages(files)
+    uploadCount.textContent = n > 0 ? `已加载 ${n} 张图片` : '加载失败'
+    // Reset the input so same files can be re-selected
+    uploadInput.value = ''
+})
+
 // ── Init scene objects ──
 createStarField()
 buildParticles(sharedTexture)
+scene.add(camera)   // needed so camera-parented featured photo renders
 
 // ── GUI ──
 initGui(cameraSelectEl)
 
 // ── Gesture callbacks ──
-onGesture(isExploded => {
-    setExploded(isExploded)
-    if (isExploded) {
-        showPhrase()
-        AudioEngine.playExpandSound()
-    } else {
-        hidePhrase()
-        AudioEngine.playContractSound()
-    }
+onGesture(isOpen => {
+    if (isOpen) onGestureOpen()
+    else        onGestureClose()
 })
 
 onSwipeGesture(direction => {
-    // Reserved for Phase 2b gallery — no-op for now
-    console.log('Swipe:', direction)
+    if (appState !== 'GALLERY') return
+    if (direction === 'left')  swipeNext()
+    else                       swipePrev()
 })
 
 // ── Gesture engine ──
@@ -91,15 +148,15 @@ function animate() {
         if (PARAMS.autoRotate) {
             mesh.rotation.y += PARAMS.rotationSpeed * PARAMS.rotationDir
         }
-
-        // Smooth tilt back to resting angle when not exploded
-        const targetX = 0.3
-        mesh.rotation.x = THREE.MathUtils.lerp(mesh.rotation.x, targetX, 0.03)
+        mesh.rotation.x = THREE.MathUtils.lerp(mesh.rotation.x, 0.3, 0.03)
         mesh.rotation.z = PARAMS.axialTilt * (Math.PI / 180)
     }
 
-    // GPU morph: advance uMorphProgress uniform
+    // GPU morph
     tickMorph()
+
+    // Gallery (slide animation, wall spin, featured float)
+    tickGallery()
 
     // Slowly rotate starfield
     const stars = getStarSystem()
