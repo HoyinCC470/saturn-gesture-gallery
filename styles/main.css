@@ -193,7 +193,7 @@ body {
     pointer-events: none;
 }
 
-/* ── Image upload button ── */
+/* ── Image manager entry ── */
 #upload-btn {
     position: absolute;
     top: 30px;
@@ -220,10 +220,241 @@ body {
     position: absolute;
     top: 72px;
     left: 140px;
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(255, 255, 255, 0.42);
     font-size: 11px;
     z-index: 20;
     pointer-events: none;
+    line-height: 1.35;
+}
+
+#image-manager-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 220;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(3, 6, 12, 0.68);
+    backdrop-filter: blur(16px);
+}
+
+#image-manager-overlay.open {
+    display: flex;
+}
+
+.image-manager-panel {
+    width: min(980px, calc(100vw - 24px));
+    max-height: min(84vh, 860px);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 22px;
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background:
+        radial-gradient(circle at top right, rgba(255, 160, 70, 0.12), transparent 32%),
+        linear-gradient(180deg, rgba(14, 16, 24, 0.96), rgba(7, 8, 13, 0.96));
+    box-shadow: 0 40px 120px rgba(0, 0, 0, 0.55);
+}
+
+.image-manager-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+}
+
+.image-manager-kicker {
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+
+.image-manager-header h2 {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.95);
+    font-weight: 500;
+    font-size: 20px;
+}
+
+.image-manager-subtitle {
+    margin: 8px 0 0;
+    max-width: 54ch;
+    color: rgba(255, 255, 255, 0.56);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.image-manager-close,
+.image-manager-toolbar button,
+.image-manager-footer button,
+.image-card__actions button {
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.9);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.image-manager-close:hover,
+.image-manager-toolbar button:hover,
+.image-manager-footer button:hover,
+.image-card__actions button:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.image-manager-close {
+    padding: 10px 14px;
+    font-size: 12px;
+}
+
+.image-manager-toolbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.image-manager-toolbar__left,
+.image-manager-toolbar__right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.image-manager-toolbar__left {
+    color: rgba(255, 255, 255, 0.56);
+    font-size: 12px;
+}
+
+.image-manager-toolbar__left [data-role="dirty-state"] {
+    color: rgba(255, 198, 120, 0.86);
+}
+
+.image-manager-toolbar button {
+    padding: 10px 14px;
+    font-size: 12px;
+}
+
+.image-manager-toolbar button.secondary,
+.image-manager-footer button.secondary {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.image-manager-toolbar button.secondary:hover,
+.image-manager-footer button.secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.image-manager-empty {
+    padding: 28px;
+    border-radius: 20px;
+    border: 1px dashed rgba(255, 255, 255, 0.16);
+    color: rgba(255, 255, 255, 0.56);
+    text-align: center;
+    font-size: 13px;
+}
+
+.image-manager-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 14px;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.image-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.image-card.drag-over {
+    border-color: rgba(255, 189, 108, 0.55);
+    background: rgba(255, 189, 108, 0.08);
+}
+
+.image-card__preview {
+    aspect-ratio: 1 / 1;
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.image-card__preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.image-card__body {
+    min-height: 54px;
+}
+
+.image-card__title {
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 13px;
+    line-height: 1.35;
+    word-break: break-all;
+}
+
+.image-card__meta {
+    margin-top: 4px;
+    color: rgba(255, 255, 255, 0.48);
+    font-size: 11px;
+}
+
+.image-card__actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.image-card__actions button {
+    padding: 8px 10px;
+    font-size: 11px;
+}
+
+.image-card__actions button.danger {
+    border-color: rgba(255, 128, 128, 0.28);
+    background: rgba(255, 90, 90, 0.08);
+}
+
+.image-card__drag-hint {
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+}
+
+.image-manager-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 4px;
+}
+
+.image-manager-footer button {
+    padding: 12px 16px;
+    font-size: 13px;
+}
+
+.image-manager-footer button.primary {
+    background: rgba(255, 160, 70, 0.16);
+    border-color: rgba(255, 160, 70, 0.28);
 }
 
 /* ── Camera PiP ── */
