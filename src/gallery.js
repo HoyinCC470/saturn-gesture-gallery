@@ -12,7 +12,13 @@
 
 import * as THREE from 'three'
 import { scene, camera } from './scene.js'
-import { mergeGalleryAssets } from './gallery-store.js'
+import {
+    appendStoredGalleryAssets,
+    clearStoredGalleryAssets,
+    readStoredGalleryAssets,
+    removeStoredGalleryAsset,
+    reorderStoredGalleryAssets,
+} from './gallery-store.js'
 
 // ── Tuneable params (GUI writes directly) ──
 export const galleryParams = {
@@ -28,6 +34,7 @@ export const galleryParams = {
 // ── State ──
 let textures = []
 let aspects  = []
+let assetItems = []
 let currentIndex = 0
 
 let wallGroup    = null
@@ -47,51 +54,103 @@ const focusTargetScale = new THREE.Vector3(1, 1, 1)
 const FEATURED_Z      = -140
 const FEATURED_BASE_H = 55
 
-// ── Load images ──────────────────────────────────────────────────────────────
-export function loadImages(files) {
+function _disposeTextureSet() {
+    textures.forEach(texture => texture?.dispose?.())
+    assetItems.forEach(item => {
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+    })
+    textures = []
+    aspects = []
+    assetItems = []
+}
+
+function _clampCurrentIndex() {
+    if (!textures.length) {
+        currentIndex = 0
+        return
+    }
+    currentIndex = Math.min(currentIndex, textures.length - 1)
+}
+
+function _resetVisibleGalleryAfterAssetChange() {
+    const hadWall = wallVisible
+    const hadFeatured = featuredVisible
+    hideAll()
+    _clampCurrentIndex()
+
+    if (!textures.length) return
+    if (hadFeatured) showFeatured()
+    else if (hadWall) showWall()
+}
+
+async function _loadTextureFromItem(item) {
     const loader = new THREE.TextureLoader()
-    let loaded = 0
-    const nextTextures = []
-    const nextAspects = []
+    const previewUrl = URL.createObjectURL(item.blob)
 
     return new Promise(resolve => {
-        if (!files.length) { resolve(0); return }
-        Array.from(files).forEach((file, i) => {
-            const url = URL.createObjectURL(file)
-            loader.load(url, tex => {
-                tex.colorSpace = THREE.SRGBColorSpace
-                nextTextures[i] = tex
-                nextAspects[i]  = tex.image.width / tex.image.height
-                URL.revokeObjectURL(url)
-                if (++loaded === files.length) {
-                    const merged = mergeGalleryAssets(
-                        textures,
-                        aspects,
-                        nextTextures.filter(Boolean),
-                        nextAspects.filter(Boolean),
-                    )
-                    textures = merged.textures
-                    aspects  = merged.aspects
-                    if (wallVisible) _buildWall()
-                    resolve(textures.length)
-                }
-            }, undefined, () => {
-                URL.revokeObjectURL(url)
-                if (++loaded === files.length) {
-                    const merged = mergeGalleryAssets(
-                        textures,
-                        aspects,
-                        nextTextures.filter(Boolean),
-                        nextAspects.filter(Boolean),
-                    )
-                    textures = merged.textures
-                    aspects  = merged.aspects
-                    if (wallVisible) _buildWall()
-                    resolve(textures.length)
-                }
+        loader.load(previewUrl, texture => {
+            texture.colorSpace = THREE.SRGBColorSpace
+            resolve({
+                ...item,
+                previewUrl,
+                texture,
+                aspect: texture.image.width / texture.image.height,
             })
+        }, undefined, () => {
+            URL.revokeObjectURL(previewUrl)
+            resolve(null)
         })
     })
+}
+
+async function _applyPersistedItems(items) {
+    const loadedItems = (await Promise.all(items.map(_loadTextureFromItem))).filter(Boolean)
+    _disposeTextureSet()
+    assetItems = loadedItems
+    textures = loadedItems.map(item => item.texture)
+    aspects = loadedItems.map(item => item.aspect)
+    _resetVisibleGalleryAfterAssetChange()
+    return textures.length
+}
+
+// ── Load images ──────────────────────────────────────────────────────────────
+export async function initializeGallery() {
+    const items = await readStoredGalleryAssets()
+    return _applyPersistedItems(items)
+}
+
+export async function loadImages(files) {
+    if (!files.length) return 0
+    const items = await appendStoredGalleryAssets(files)
+    return _applyPersistedItems(items)
+}
+
+export function getGalleryItems() {
+    return assetItems.map(({ id, name, previewUrl }) => ({ id, name, previewUrl }))
+}
+
+export async function removeImage(itemId) {
+    const items = await removeStoredGalleryAsset(itemId)
+    return _applyPersistedItems(items)
+}
+
+export async function moveImage(itemId, direction) {
+    const fromIndex = assetItems.findIndex(item => item.id === itemId)
+    if (fromIndex === -1) return textures.length
+    const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1
+    if (toIndex < 0 || toIndex >= assetItems.length) return textures.length
+
+    const nextIds = [...assetItems.map(item => item.id)]
+    const [movedId] = nextIds.splice(fromIndex, 1)
+    nextIds.splice(toIndex, 0, movedId)
+    const items = await reorderStoredGalleryAssets(nextIds)
+    currentIndex = toIndex
+    return _applyPersistedItems(items)
+}
+
+export async function clearImages() {
+    const items = await clearStoredGalleryAssets()
+    return _applyPersistedItems(items)
 }
 
 export function getImageCount() { return textures.length }

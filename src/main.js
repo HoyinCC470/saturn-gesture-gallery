@@ -7,9 +7,16 @@ import { buildParticles, getParticleMesh, tickMorph, setExploded } from './parti
 import { initGui } from './gui.js'
 import { initGesture, isGesturePaused, onGesture, onSwipeGesture, setGesturePaused } from './gesture.js'
 import { initCameras } from './camera-device.js'
+import { initImageManager } from './image-manager.js'
 import { getRandomPhrase } from './phrases.js'
 import {
-    loadImages, getImageCount,
+    clearImages,
+    getGalleryItems,
+    getImageCount,
+    initializeGallery,
+    loadImages,
+    moveImage,
+    removeImage,
     showWall, hideAll,
     focusFromWall, isFeaturedVisible, isWallVisible, swipeNext, swipePrev,
     tickGallery,
@@ -19,6 +26,7 @@ import {
 const messageBox      = document.getElementById('message-box')
 const cameraSelectEl  = document.getElementById('camera-select')
 const uploadInput     = document.getElementById('image-upload')
+const uploadButton    = document.getElementById('upload-btn')
 const uploadCount     = document.getElementById('upload-count')
 
 // ── Gesture state machine ─────────────────────────────────────────────────────
@@ -68,15 +76,6 @@ function hidePhrase() {
     messageBox.classList.remove('visible')
 }
 
-// ── Image upload ──────────────────────────────────────────────────────────────
-uploadInput.addEventListener('change', async e => {
-    const files = e.target.files
-    if (!files.length) return
-    const n = await loadImages(files)
-    uploadCount.textContent = n > 0 ? `已加载 ${n} 张图片` : '加载失败'
-    uploadInput.value = ''
-})
-
 // ── Init scene ──
 createStarField()
 buildParticles(sharedTexture)
@@ -84,6 +83,19 @@ scene.add(camera)
 
 // ── GUI ──
 initGui(cameraSelectEl)
+const imageManager = initImageManager({
+    triggerButton: uploadButton,
+    uploadInput,
+    countEl: uploadCount,
+    getItems: getGalleryItems,
+    onAddFiles: loadImages,
+    onRemoveItem: removeImage,
+    onMoveItem: moveImage,
+    onClearAll: clearImages,
+})
+void initializeGallery().then(() => {
+    imageManager.render()
+})
 
 // ── Gesture callbacks ──
 onGesture(isOpen => {
