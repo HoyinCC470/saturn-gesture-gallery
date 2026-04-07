@@ -3,7 +3,7 @@
 
 import { getVideoElement, setStatusGesturePaused, setStatusNoHand, setStatusReady, setStatusTracking } from './camera-device.js'
 import { galleryParams } from './gallery.js'
-import { isLikelyHandLandmarks } from './gesture-filter.js'
+import { isClosedHandPose, isLikelyHandLandmarks } from './gesture-filter.js'
 
 let handsInstance = null
 let onGestureChange = null   // cb(isOpen: boolean)
@@ -18,6 +18,7 @@ let palmXHistory  = []
 let lastSwipeTime = 0
 let swipeLockUntil = 0  // timestamp: block pinch/exit detection right after a swipe
 let onSwipe = null
+let pinchCandidateSince = 0
 
 // PiP state
 const pipCanvas = document.getElementById('pip-canvas')
@@ -48,6 +49,7 @@ export function setGesturePaused(val) {
     palmXHistory = []
     lastSwipeTime = 0
     swipeLockUntil = 0
+    pinchCandidateSince = 0
 
     if (gesturePaused) setStatusGesturePaused()
     else               setStatusReady()
@@ -109,6 +111,7 @@ function startLoop() {
 // ── Gesture classifiers ──────────────────────────────────────────────────────
 function classifyGesture(lm) {
     const dist48 = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y)
+    if (isClosedHandPose(lm)) return 'pinch'
     if (dist48 < 0.06)  return 'pinch'
     if (dist48 > 0.11)  return 'open'
     return 'neutral'
@@ -130,6 +133,7 @@ function handleResults(results) {
         setStatusNoHand()
         palmXHistory = []
         lastGestureState = null
+        pinchCandidateSince = 0
         return
     }
 
@@ -141,8 +145,15 @@ function handleResults(results) {
     // Block pinch briefly after a swipe so hand-return doesn't exit gallery
     const pinchAllowed = now > swipeLockUntil
     let newState = lastGestureState
-    if (gesture === 'open')                       newState = true
-    else if (gesture === 'pinch' && pinchAllowed) newState = false
+    if (gesture === 'open') {
+        pinchCandidateSince = 0
+        newState = true
+    } else if (gesture === 'pinch' && pinchAllowed) {
+        if (!pinchCandidateSince) pinchCandidateSince = now
+        if (now - pinchCandidateSince > 140) newState = false
+    } else {
+        pinchCandidateSince = 0
+    }
 
     if (newState !== lastGestureState) {
         lastGestureState = newState
@@ -161,6 +172,7 @@ function handleResults(results) {
             lastSwipeTime   = now
             swipeLockUntil  = now + 1200  // lock exit detection for 1.2s after swipe
             palmXHistory    = []
+            pinchCandidateSince = 0
             onSwipe?.(delta > 0 ? 'right' : 'left')
         }
     }
